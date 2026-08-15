@@ -12,8 +12,8 @@ from .flexicubes import FlexiCubes
 from .util import SimpleMesh
 from .loss import sdf_reg_loss
 
-from shared_utils.camera_utils import OrbitCamera
-from mesh_processer.mesh import Mesh
+from ...shared_utils.camera_utils import OrbitCamera
+from ...mesh_processer.mesh import Mesh
 
 
 def lr_schedule(iter):

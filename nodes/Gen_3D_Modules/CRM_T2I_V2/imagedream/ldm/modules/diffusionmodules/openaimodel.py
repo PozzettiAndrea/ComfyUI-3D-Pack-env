@@ -8,26 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, repeat
 
-from CRM_T2I_V2.imagedream.ldm.modules.diffusionmodules.util import (
-    checkpoint,
-    conv_nd,
-    linear,
-    avg_pool_nd,
-    zero_module,
-    normalization,
-    timestep_embedding,
-    convert_module_to_f16, 
-    convert_module_to_f32
-)
-from CRM_T2I_V2.imagedream.ldm.modules.attention import (
-    SpatialTransformer, 
-    SpatialTransformer3D, 
-    exists
-)
-from CRM_T2I_V2.imagedream.ldm.modules.diffusionmodules.adaptors import (
-    Resampler, 
-    ImageProjModel
-)
+from .util import checkpoint, conv_nd, linear, avg_pool_nd, zero_module, normalization, timestep_embedding, convert_module_to_f16, convert_module_to_f32
+from ..attention import SpatialTransformer, SpatialTransformer3D, exists
+from .adaptors import Resampler, ImageProjModel
 
 ## go
 class AttentionPool2d(nn.Module):

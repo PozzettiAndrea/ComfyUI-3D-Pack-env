@@ -11,17 +11,17 @@ from diffusers import AutoencoderKL, DDIMScheduler
 from transformers import CLIPTextModel, CLIPTokenizer, CLIPImageProcessor, CLIPVisionModelWithProjection
 from torchvision import transforms
 
-from CharacterGen.Stage_2D.tuneavideo.models.unet_mv2d_condition import UNetMV2DConditionModel
-from CharacterGen.Stage_2D.tuneavideo.models.unet_mv2d_ref import UNetMV2DRefModel
-from CharacterGen.Stage_2D.tuneavideo.models.PoseGuider import PoseGuider
-from CharacterGen.Stage_2D.tuneavideo.pipelines.pipeline_tuneavideo import TuneAVideoPipeline
+from .Stage_2D.tuneavideo.models.unet_mv2d_condition import UNetMV2DConditionModel
+from .Stage_2D.tuneavideo.models.unet_mv2d_ref import UNetMV2DRefModel
+from .Stage_2D.tuneavideo.models.PoseGuider import PoseGuider
+from .Stage_2D.tuneavideo.pipelines.pipeline_tuneavideo import TuneAVideoPipeline
 
 from einops import rearrange
 from PIL import Image
 import json
 
 import trimesh
-from CharacterGen.Stage_3D import lrm
+from .Stage_3D import lrm
 from datetime import datetime
 from pygltflib import GLTF2
 import pymeshlab

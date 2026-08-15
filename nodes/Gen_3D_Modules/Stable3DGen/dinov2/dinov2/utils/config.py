@@ -9,10 +9,10 @@ import os
 
 from omegaconf import OmegaConf
 
-import dinov2.distributed as distributed
-from dinov2.logging import setup_logging
-from dinov2.utils import utils
-from dinov2.configs import dinov2_default_config
+from ... import distributed as distributed
+from ...logging import setup_logging
+from ...utils import utils
+from ...configs import dinov2_default_config
 
 
 logger = logging.getLogger("dinov2")

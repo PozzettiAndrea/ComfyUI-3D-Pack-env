@@ -28,10 +28,10 @@ import torchvision
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only
 
-from hy3dshape.pipelines import export_to_trimesh
-from hy3dshape.utils.trainings.mesh import MeshOutput
-from hy3dshape.utils.visualizers import html_util
-from hy3dshape.utils.visualizers.pythreejs_viewer import PyThreeJSViewer
+from ...pipelines import export_to_trimesh
+from .mesh import MeshOutput
+from ..visualizers import html_util
+from ..visualizers.pythreejs_viewer import PyThreeJSViewer
 
 
 class ImageConditionalASLDiffuserLogger(Callback): 

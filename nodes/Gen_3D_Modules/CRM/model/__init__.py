@@ -1,1 +1,1 @@
-from CRM.model.crm.model import ConvolutionalReconstructionModel
+from .crm.model import ConvolutionalReconstructionModel

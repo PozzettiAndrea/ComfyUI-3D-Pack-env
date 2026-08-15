@@ -30,7 +30,7 @@ from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 from pytorch_lightning.loggers import Logger, TensorBoardLogger
 from pytorch_lightning.utilities import rank_zero_info
 
-from hy3dshape.utils import get_config_from_file, instantiate_from_config
+from .hy3dshape.utils import get_config_from_file, instantiate_from_config
 
 
 class SetupCallback(Callback):

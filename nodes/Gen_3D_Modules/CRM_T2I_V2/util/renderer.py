@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import nvdiffrast.torch as dr
-from CRM_T2I_V2.util.flexicubes_geometry import FlexiCubesGeometry
+from .flexicubes_geometry import FlexiCubesGeometry
 
 class Renderer(nn.Module):
     def __init__(self, tet_grid_size, camera_angle_num, scale, geo_type):

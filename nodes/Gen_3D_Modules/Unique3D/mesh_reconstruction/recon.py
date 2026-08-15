@@ -9,7 +9,7 @@ from .remesh import calc_vertex_normals
 from .opt import MeshOptimizer
 from .func import make_star_cameras_orthographic, make_star_cameras_orthographic_py3d
 from .render import NormalsRenderer, Pytorch3DNormalsRenderer
-from Unique3D.scripts.utils import to_py3d_mesh, init_target
+from ..scripts.utils import to_py3d_mesh, init_target
 
 def reconstruct_stage1(pils: List[Image.Image], steps=100, vertices=None, faces=None, start_edge_len=0.1, end_edge_len=0.02, decay=0.995, return_mesh=False, loss_expansion_weight=0.1, gain=0.05):
     assert len(pils) == 4

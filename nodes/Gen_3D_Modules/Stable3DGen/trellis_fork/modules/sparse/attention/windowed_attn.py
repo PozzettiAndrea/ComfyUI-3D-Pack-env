@@ -5,11 +5,7 @@ import os
 import logging
 import torch
 from .. import SparseTensor
-from trellis_fork.backend_config import (
-    get_attention_backend,
-    get_debug_mode,
-    get_available_backends
-)
+from ....backend_config import get_attention_backend, get_debug_mode, get_available_backends
 import logging
 
 logger = logging.getLogger(__name__)

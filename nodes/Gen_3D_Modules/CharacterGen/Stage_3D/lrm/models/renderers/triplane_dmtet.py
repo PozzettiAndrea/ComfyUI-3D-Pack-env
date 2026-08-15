@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange, reduce
 
-from CharacterGen.Stage_3D import lrm
+from .... import lrm
 from ..renderers.base import BaseRenderer
 from ..isosurface import MarchingTetrahedraHelper
 from ...utils.ops import (

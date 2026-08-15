@@ -4,7 +4,7 @@ from datetime import datetime
 
 from omegaconf import OmegaConf
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from .typing import *
 
 # ============ Register OmegaConf Resolvers ============= #

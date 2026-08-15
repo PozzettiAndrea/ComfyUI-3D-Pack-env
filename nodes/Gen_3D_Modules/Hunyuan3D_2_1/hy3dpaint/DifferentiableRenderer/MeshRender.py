@@ -370,7 +370,7 @@ class MeshRender:
 
         self.raster_mode = raster_mode
         if self.raster_mode == "cr":
-            import custom_rasterizer as cr
+            from .. import custom_rasterizer as cr
 
             self.raster = cr
         else:

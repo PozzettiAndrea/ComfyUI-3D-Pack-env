@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import craftsman
+from .... import craftsman
 from .utils import (
     Mesh,
     IsosurfaceHelper,
@@ -13,9 +13,9 @@ from .utils import (
     MarchingTetrahedraHelper,
 )
 
-from craftsman.utils.base import BaseModule
-from craftsman.utils.ops import chunk_batch, scale_tensor
-from craftsman.utils.typing import *
+from ...utils.base import BaseModule
+from ...utils.ops import chunk_batch, scale_tensor
+from ...utils.typing import *
 
 class BaseGeometry(BaseModule):
     @dataclass

@@ -18,11 +18,11 @@ from diffusers import (
     DPMSolverMultistepScheduler
 )
 
-import craftsman
-from craftsman.systems.base import BaseSystem
-from craftsman.utils.ops import generate_dense_grid_points
-from craftsman.utils.misc import get_rank
-from craftsman.utils.typing import *
+from ... import craftsman
+from .base import BaseSystem
+from ..utils.ops import generate_dense_grid_points
+from ..utils.misc import get_rank
+from ..utils.typing import *
 
 import comfy.utils
 

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-import StableFast3D.sf3d.models.utils as sf3d_utils
+from .models import utils as sf3d_utils
 
 
 def create_intrinsic_from_fov_deg(fov_deg: float, cond_height: int, cond_width: int):

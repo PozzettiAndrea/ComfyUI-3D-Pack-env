@@ -15,11 +15,11 @@ from kiui.op import inverse_sigmoid
 from kiui.cam import orbit_camera, get_perspective
 from kiui.nn import MLP, trunc_exp
 
-from mesh_processer.mesh import Mesh
-from mesh_processer.mesh_utils import marching_cubes_density_to_mesh, color_func_to_albedo
-from LGM.core.options import Options
-from LGM.core.gs import GaussianRenderer
-from LGM.core.utils import get_rays
+from ...mesh_processer.mesh import Mesh
+from ...mesh_processer.mesh_utils import marching_cubes_density_to_mesh, color_func_to_albedo
+from .core.options import Options
+from .core.gs import GaussianRenderer
+from .core.utils import get_rays
 
 # Triple renderer of gaussians, gaussian, and diso mesh.
 # gaussian --> nerf --> mesh

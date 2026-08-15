@@ -7,7 +7,7 @@ from einops import repeat
 from diso import DiffDMC
 import torch.nn.functional as F
 
-from TripoSG.utils.typing import *
+from .utils.typing import *
 
 def generate_dense_grid_points_gpu(bbox_min: torch.Tensor,
                                    bbox_max: torch.Tensor,

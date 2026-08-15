@@ -43,7 +43,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
             self.dataset_configs["test"] = test
 
     def setup(self, stage):
-        from src.utils.train_util import instantiate_from_config
+        from ..utils.train_util import instantiate_from_config
 
         if stage in ["fit"]:
             dataset_dict = {}

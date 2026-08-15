@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from ..models.mesh import Mesh
 from ..utils.typing import *
 from ..utils.ops import scale_tensor

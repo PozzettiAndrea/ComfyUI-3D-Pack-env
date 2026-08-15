@@ -6,10 +6,10 @@ from typing import Optional
 from diffusers.models.embeddings import Timesteps
 import math
 
-import craftsman
-from craftsman.models.transformers.attention import ResidualAttentionBlock
-from craftsman.models.transformers.utils import init_linear, MLP
-from craftsman.utils.base import BaseModule
+from .... import craftsman
+from ..transformers.attention import ResidualAttentionBlock
+from ..transformers.utils import init_linear, MLP
+from ...utils.base import BaseModule
 
 
 class UNetDiffusionTransformer(nn.Module):

@@ -47,8 +47,8 @@ from transformers.utils import (
 from transformers.utils.backbone_utils import BackboneMixin
 from transformers.models.dinov2.configuration_dinov2 import Dinov2Config
 
-from TriplaneGaussian.models.transformers import MemoryEfficientAttentionMixin
-from TriplaneGaussian.utils.typing import *
+from ..transformers import MemoryEfficientAttentionMixin
+from ...utils.typing import *
 
 
 logger = logging.get_logger(__name__)

@@ -3,7 +3,7 @@ from os import listdir
 from os.path import isfile, join, exists, dirname
 import sys
 from datetime import datetime
-from shared_utils.log_utils import cstr
+from .log_utils import cstr
 
 def get_parent_dirpath_n_level_up(abs_path, n=1):
     for i in range(n):

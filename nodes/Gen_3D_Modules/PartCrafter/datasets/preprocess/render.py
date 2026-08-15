@@ -4,8 +4,8 @@ import numpy as np
 import argparse
 import json
 
-from partcrafter_src.utils.data_utils import normalize_mesh
-from partcrafter_src.utils.render_utils import render_single_view
+from ...partcrafter_src.utils.data_utils import normalize_mesh
+from ...partcrafter_src.utils.render_utils import render_single_view
 
 RADIUS = 4
 IMAGE_SIZE = (2048, 2048)

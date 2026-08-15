@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from jaxtyping import Float, Integer
 from torch import Tensor
 
-from StableFast3D.sf3d.models.utils import dot, triangle_intersection_2d
+from .models.utils import dot, triangle_intersection_2d
 
 
 def _box_assign_vertex_to_cube_face(

@@ -4,8 +4,8 @@ import numpy as np
 import argparse
 import json
 
-from partcrafter_src.utils.data_utils import normalize_mesh
-from partcrafter_src.utils.metric_utils import compute_IoU_for_scene
+from ...partcrafter_src.utils.data_utils import normalize_mesh
+from ...partcrafter_src.utils.metric_utils import compute_IoU_for_scene
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

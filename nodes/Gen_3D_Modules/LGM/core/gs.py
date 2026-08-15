@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from LGM.core.options import Options
+from .options import Options
 
 import kiui
 

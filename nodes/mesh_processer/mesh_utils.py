@@ -17,7 +17,7 @@ except ImportError:
     pytorch3d_capable = False
 
 from .mesh import PointCloud
-from shared_utils.sh_utils import SH2RGB, RGB2SH
+from ..shared_utils.sh_utils import SH2RGB, RGB2SH
 
 def _base_face_areas(face_vertices_0, face_vertices_1, face_vertices_2):
     """Base function to compute the face areas."""

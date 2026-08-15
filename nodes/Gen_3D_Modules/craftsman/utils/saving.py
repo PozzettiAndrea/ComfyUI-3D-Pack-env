@@ -14,8 +14,8 @@ from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image, ImageDraw
 from pytorch_lightning.loggers import WandbLogger
 
-from craftsman.models.geometry.utils import Mesh
-from craftsman.utils.typing import *
+from ..models.geometry.utils import Mesh
+from .typing import *
 
 
 class SaverMixin:

@@ -10,7 +10,7 @@ from huggingface_hub import hf_hub_download, snapshot_download
 from typing import Dict, Union
 import json
 import importlib  # Import the importlib module
-from trellis_fork.modules.utils import convert_module_to_f16, convert_module_to_f32
+from .trellis_fork.modules.utils import convert_module_to_f16, convert_module_to_f32
 
 logger = logging.getLogger('model_manager')
 

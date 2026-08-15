@@ -8,7 +8,7 @@ from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 import pytorch_lightning as pl
 from einops import rearrange, repeat
 
-from InstantMesh.utils.train_util import instantiate_from_config
+from .utils.train_util import instantiate_from_config
 
 
 # Regulrarization loss for FlexiCubes

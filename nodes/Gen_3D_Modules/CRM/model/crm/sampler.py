@@ -4,7 +4,7 @@ import time
 import nvdiffrast.torch as dr
 from PIL import Image
 
-from CRM.util.utils import get_tri
+from ...util.utils import get_tri
 
 class CRMSampler:
     @classmethod

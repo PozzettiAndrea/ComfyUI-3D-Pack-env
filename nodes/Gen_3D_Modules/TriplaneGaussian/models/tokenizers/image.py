@@ -4,10 +4,10 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 
-from TriplaneGaussian.utils.base import BaseModule
-from TriplaneGaussian.models.tokenizers.dinov2 import Dinov2Model
-from TriplaneGaussian.models.transformers import Modulation
-from TriplaneGaussian.utils.typing import *
+from ...utils.base import BaseModule
+from .dinov2 import Dinov2Model
+from ..transformers import Modulation
+from ...utils.typing import *
 
 class DINOV2SingleImageTokenizer(BaseModule):
     @dataclass

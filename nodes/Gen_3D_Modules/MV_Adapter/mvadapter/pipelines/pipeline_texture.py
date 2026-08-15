@@ -9,20 +9,9 @@ import torch.nn.functional as F
 from PIL import Image
 from spandrel import ModelLoader
 
-from MV_Adapter.mvadapter.utils import image_to_tensor, make_image_grid, tensor_to_image
-from MV_Adapter.mvadapter.utils.mesh_utils import (
-    Camera,
-    CameraProjection,
-    NVDiffRastContextWrapper,
-    SmartPainter,
-    TexturedMesh,
-    get_camera,
-    get_orthogonal_camera,
-    load_mesh,
-    render,
-    replace_mesh_texture_and_save,
-)
-from MV_Adapter.mvadapter.utils.mesh_utils.mesh_process import process_raw
+from ..utils import image_to_tensor, make_image_grid, tensor_to_image
+from ..utils.mesh_utils import Camera, CameraProjection, NVDiffRastContextWrapper, SmartPainter, TexturedMesh, get_camera, get_orthogonal_camera, load_mesh, render, replace_mesh_texture_and_save
+from ..utils.mesh_utils.mesh_process import process_raw
 
 # Import dilate function to remove texture seams
 def torch_image_dilate(img):

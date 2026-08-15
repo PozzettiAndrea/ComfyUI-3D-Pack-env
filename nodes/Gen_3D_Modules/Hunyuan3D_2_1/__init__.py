@@ -31,7 +31,7 @@ for path in paths_to_add:
 
 # Apply torchvision fix before other imports
 try:
-    from hy3dpaint.utils.torchvision_fix import apply_fix
+    from .hy3dpaint.utils.torchvision_fix import apply_fix
     apply_fix()
     logger.info("Torchvision fix applied for Hunyuan3D-2.1")
 except Exception as e:
@@ -47,15 +47,15 @@ except Exception as e:
     logger.error(f"Warning: Failed to import mmgp: {e}")
 
 # Import key modules with aliases to avoid conflicts with old Hunyuan3D
-from hy3dshape import FaceReducer as FaceReducer_2_1
-from hy3dshape import FloaterRemover as FloaterRemover_2_1  
-from hy3dshape import DegenerateFaceRemover as DegenerateFaceRemover_2_1
-from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline as Hunyuan3DDiTFlowMatchingPipeline_2_1
-from hy3dshape.pipelines import export_to_trimesh as export_to_trimesh_2_1
-from hy3dshape.rembg import BackgroundRemover as BackgroundRemover_2_1
-from hy3dpaint.textureGenPipeline import Hunyuan3DPaintPipeline as Hunyuan3DPaintPipeline_2_1
-from hy3dpaint.textureGenPipeline import Hunyuan3DPaintConfig as Hunyuan3DPaintConfig_2_1
-from hy3dpaint.convert_utils import create_glb_with_pbr_materials as create_glb_with_pbr_materials_2_1
+from .hy3dshape.hy3dshape import FaceReducer as FaceReducer_2_1
+from .hy3dshape.hy3dshape import FloaterRemover as FloaterRemover_2_1  
+from .hy3dshape.hy3dshape import DegenerateFaceRemover as DegenerateFaceRemover_2_1
+from .hy3dshape.hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline as Hunyuan3DDiTFlowMatchingPipeline_2_1
+from .hy3dshape.hy3dshape.pipelines import export_to_trimesh as export_to_trimesh_2_1
+from .hy3dshape.hy3dshape.rembg import BackgroundRemover as BackgroundRemover_2_1
+from .hy3dpaint.textureGenPipeline import Hunyuan3DPaintPipeline as Hunyuan3DPaintPipeline_2_1
+from .hy3dpaint.textureGenPipeline import Hunyuan3DPaintConfig as Hunyuan3DPaintConfig_2_1
+from .hy3dpaint.convert_utils import create_glb_with_pbr_materials as create_glb_with_pbr_materials_2_1
 
 logger.info("Hunyuan3D-2.1 modules loaded successfully")
 

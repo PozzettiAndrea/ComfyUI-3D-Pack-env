@@ -17,7 +17,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 import comfy.utils
 
-from LGM.mvdream.mv_unet import MultiViewUNetModel, get_camera
+from .mv_unet import MultiViewUNetModel, get_camera
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

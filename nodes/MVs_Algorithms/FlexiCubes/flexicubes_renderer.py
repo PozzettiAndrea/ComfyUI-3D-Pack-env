@@ -5,7 +5,7 @@ import torch
 import nvdiffrast.torch as dr
 from kiui.cam import orbit_camera
 
-from FlexiCubes import util
+from . import util
 
 class FlexiCubesRenderer:
     def __init__(self, force_cuda_rast):

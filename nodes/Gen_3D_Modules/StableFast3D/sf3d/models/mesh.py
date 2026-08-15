@@ -10,8 +10,8 @@ import trimesh
 from jaxtyping import Float, Integer
 from torch import Tensor
 
-from StableFast3D.sf3d.box_uv_unwrap import box_projection_uv_unwrap
-from StableFast3D.sf3d.models.utils import dot
+from ..box_uv_unwrap import box_projection_uv_unwrap
+from .utils import dot
 
 
 class Mesh:

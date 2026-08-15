@@ -31,7 +31,7 @@ from PIL import Image, ImageSequence
 
 from .utils import seed_everything, timing_decorator, auto_amp_inference
 from .utils import get_parameter_number, set_parameter_grad_false
-from Hunyuan3D_V1.svrm.predictor import MV23DPredictor
+from ..svrm.predictor import MV23DPredictor
 
 
 class Views2Mesh():

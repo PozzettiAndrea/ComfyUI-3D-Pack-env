@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import pytorch_lightning as pl
 import torch.nn.functional as F
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from .utils import parse_optimizer, parse_scheduler
 from ..utils.base import (
     Updateable,

@@ -17,7 +17,7 @@ from ..representations import MeshExtractResult
 from contextlib import contextmanager
 from typing import Literal
 import folder_paths
-from stable_trellis_model_manager import TrellisModelManager as StableTrellisModelManager
+from ...stable_trellis_model_manager import TrellisModelManager as StableTrellisModelManager
 
 import os
 import logging

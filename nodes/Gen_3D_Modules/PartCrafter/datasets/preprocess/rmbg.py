@@ -6,8 +6,8 @@ import json
 import torch
 from huggingface_hub import snapshot_download
 
-from partcrafter_src.utils.image_utils import prepare_image
-from partcrafter_src.models.briarmbg import BriaRMBG
+from ...partcrafter_src.utils.image_utils import prepare_image
+from ...partcrafter_src.models.briarmbg import BriaRMBG
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

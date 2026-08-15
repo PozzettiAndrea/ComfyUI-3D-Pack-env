@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import torch.nn as nn
-from TriplaneGaussian.utils.base import BaseModule
-from TriplaneGaussian.utils.typing import *
+from ...utils.base import BaseModule
+from ...utils.typing import *
 import torch
 
 class PointLearnablePositionalEmbedding(BaseModule):

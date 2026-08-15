@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 import torch
 from huggingface_hub import hf_hub_download
 
-from CRM_T2I_V3.imagedream.ldm.util import instantiate_from_config
+from .ldm.util import instantiate_from_config
 
 
 PRETRAINED_MODELS = {

@@ -12,8 +12,8 @@ from transformers import CLIPModel, CLIPTokenizer, CLIPImageProcessor
 from transformers.utils import ModelOutput
 from typing import Iterable, Optional, Union, List
 
-from craftsman.utils.base import BaseModule
-from craftsman.utils.typing import *
+from ...utils.base import BaseModule
+from ...utils.typing import *
 
 ImageType = Union[np.ndarray, torch.Tensor, Image.Image]
 

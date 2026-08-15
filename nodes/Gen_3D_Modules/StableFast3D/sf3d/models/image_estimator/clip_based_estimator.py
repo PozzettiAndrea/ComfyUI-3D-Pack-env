@@ -8,8 +8,8 @@ from jaxtyping import Float
 from torch import Tensor
 from torchvision.transforms import Normalize
 
-from StableFast3D.sf3d.models.network import get_activation
-from StableFast3D.sf3d.models.utils import BaseModule
+from ..network import get_activation
+from ..utils import BaseModule
 
 
 @dataclass

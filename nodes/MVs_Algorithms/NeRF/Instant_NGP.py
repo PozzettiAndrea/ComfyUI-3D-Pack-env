@@ -14,7 +14,7 @@ from kiui.op import safe_normalize
 from kiui.cam import orbit_camera
 from kiui.nn import MLP, trunc_exp
 
-from shared_utils.image_utils import prepare_torch_img
+from ...shared_utils.image_utils import prepare_torch_img
 
 class InstantNGP(nn.Module):
     def __init__(self, resolution=128, device="cuda"):

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 from diffusers.models.embeddings import ImagePositionalEmbeddings, PatchEmbed
 
-from CharacterGen.Stage_3D import lrm
+from .... import lrm
 from ...utils.base import BaseModule
 from .attention import (
     BasicTransformerBlock,

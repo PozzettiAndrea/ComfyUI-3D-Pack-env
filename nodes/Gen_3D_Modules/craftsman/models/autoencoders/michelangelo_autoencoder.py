@@ -6,12 +6,12 @@ import torch.nn as nn
 from einops import repeat, rearrange
 from transformers import CLIPModel
 
-import craftsman
-from craftsman.models.transformers.perceiver_1d import Perceiver
-from craftsman.models.transformers.attention import ResidualCrossAttentionBlock
-from craftsman.utils.checkpoint import checkpoint
-from craftsman.utils.base import BaseModule
-from craftsman.utils.typing import *
+from .... import craftsman
+from ..transformers.perceiver_1d import Perceiver
+from ..transformers.attention import ResidualCrossAttentionBlock
+from ...utils.checkpoint import checkpoint
+from ...utils.base import BaseModule
+from ...utils.typing import *
 
 from .utils import AutoEncoder, FourierEmbedder, get_embedder
 

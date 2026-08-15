@@ -10,7 +10,7 @@ import torch
 import numpy as np
 import os
 from . import Geometry
-from FlexiCubes.flexicubes import FlexiCubes
+from ......MVs_Algorithms.FlexiCubes.flexicubes import FlexiCubes
 import torch.nn.functional as F
 
 def get_center_boundary_index(grid_res, device):

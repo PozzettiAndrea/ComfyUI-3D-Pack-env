@@ -7,7 +7,7 @@
 # license agreement from NVIDIA CORPORATION & AFFILIATES is strictly prohibited.
 
 import torch
-from CRM_T2I_V2.util.flexicubes import FlexiCubes # replace later
+from .flexicubes import FlexiCubes # replace later
 # from dmtet import sdf_reg_loss_batch
 import torch.nn.functional as F
 

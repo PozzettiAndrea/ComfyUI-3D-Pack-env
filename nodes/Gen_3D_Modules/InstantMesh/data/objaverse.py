@@ -18,12 +18,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 
-from InstantMesh.utils.train_util import instantiate_from_config
-from InstantMesh.utils.camera_util import (
-    FOV_to_intrinsics, 
-    center_looking_at_camera_pose, 
-    get_circular_camera_poses,
-)
+from ..utils.train_util import instantiate_from_config
+from ..utils.camera_util import FOV_to_intrinsics, center_looking_at_camera_pose, get_circular_camera_poses
 
 
 class DataModuleFromConfig(pl.LightningDataModule):

@@ -4,11 +4,11 @@ import torch
 from skimage import measure
 from einops import repeat, rearrange
 
-import craftsman
-from craftsman.systems.base import BaseSystem
-from craftsman.utils.ops import generate_dense_grid_points
-from craftsman.utils.typing import *
-from craftsman.utils.misc import get_rank
+from ... import craftsman
+from .base import BaseSystem
+from ..utils.ops import generate_dense_grid_points
+from ..utils.typing import *
+from ..utils.misc import get_rank
 
 
 @craftsman.register("shape-autoencoder-system")

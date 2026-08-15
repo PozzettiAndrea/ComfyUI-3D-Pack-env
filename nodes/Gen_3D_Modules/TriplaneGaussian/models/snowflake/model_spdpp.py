@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from TriplaneGaussian.utils.base import BaseModule
-from TriplaneGaussian.utils.typing import *
+from ...utils.base import BaseModule
+from ...utils.typing import *
 from dataclasses import dataclass, field
 
 from pytorch3d.renderer import (

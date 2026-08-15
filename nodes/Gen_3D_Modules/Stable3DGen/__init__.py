@@ -34,7 +34,7 @@ if os.path.exists(trellis_path) and trellis_path not in sys.path:
 
 # Verify trellis package is importable
 try:
-    import trellis_fork
+    from . import trellis_fork
     # logger.info("Trellis package imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import trellis package: {e}")
@@ -43,7 +43,7 @@ except ImportError as e:
 
 # Verify stablex package is importable
 try:
-    import stablex
+    from . import stablex
     # logger.info("stablex package imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import stablex package: {e}")

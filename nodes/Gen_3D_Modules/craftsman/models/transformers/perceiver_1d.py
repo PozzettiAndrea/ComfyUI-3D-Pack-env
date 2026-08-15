@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from craftsman.utils.typing import *
-from craftsman.utils.checkpoint import checkpoint
+from ...utils.typing import *
+from ...utils.checkpoint import checkpoint
 
 from .utils import init_linear
 from .attention import  ResidualAttentionBlock

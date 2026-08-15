@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.optim import lr_scheduler
 
-import craftsman
+from ... import craftsman
 
 
 def get_scheduler(name):
@@ -45,7 +45,7 @@ def parse_optimizer(config, model):
 
         optim = getattr(apex.optimizers, config.name)(params, **config.args)
     elif config.name in ["Adan"]:
-        from craftsman.systems import optimizers
+        from ..systems import optimizers
 
         optim = getattr(optimizers, config.name)(params, **config.args)
     else:

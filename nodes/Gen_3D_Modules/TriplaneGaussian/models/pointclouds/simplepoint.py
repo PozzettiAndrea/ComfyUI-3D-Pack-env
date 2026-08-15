@@ -2,9 +2,9 @@ from dataclasses import dataclass, field
 import torch
 from einops import rearrange
 
-import TriplaneGaussian
-from TriplaneGaussian.utils.base import BaseModule
-from TriplaneGaussian.utils.typing import *
+from .... import TriplaneGaussian
+from ...utils.base import BaseModule
+from ...utils.typing import *
 
 class SimplePointGenerator(BaseModule):
     @dataclass
@@ -42,7 +42,7 @@ class SimplePointGenerator(BaseModule):
         weights = self.cfg.camera_embedder.pop("weights") if "weights" in self.cfg.camera_embedder else None
         self.camera_embedder = TriplaneGaussian.find(self.cfg.camera_embedder_cls)(**self.cfg.camera_embedder)
         if weights:
-            from TriplaneGaussian.utils.misc import load_module_weights
+            from ...utils.misc import load_module_weights
             weights_path, module_name = weights.split(":")
             state_dict = load_module_weights(
                 weights_path, module_name=module_name, map_location="cpu"

@@ -13,7 +13,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image, ImageDraw
 from pytorch_lightning.loggers import WandbLogger
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from ..models.mesh import Mesh
 from ..utils.typing import *
 

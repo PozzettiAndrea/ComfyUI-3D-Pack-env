@@ -12,8 +12,8 @@ import comfy.utils
 
 from .diff_mesh_renderer import DiffRastRenderer
 
-from shared_utils.camera_utils import BaseCameraController
-from shared_utils.image_utils import prepare_torch_img
+from ...shared_utils.camera_utils import BaseCameraController
+from ...shared_utils.image_utils import prepare_torch_img
 
 class DiffMeshCameraController(BaseCameraController):
     

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from CharacterGen.Stage_3D import lrm
+from .... import lrm
 from .base import BaseMaterial
 from ..networks import get_encoding, get_mlp
 from ...utils.ops import dot, get_activation

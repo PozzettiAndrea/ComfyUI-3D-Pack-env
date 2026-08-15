@@ -1,4 +1,4 @@
-from partcrafter_src.utils.typing_utils import *
+from ..utils.typing_utils import *
 
 import json
 import os
@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from partcrafter_src.utils.data_utils import load_surface, load_surfaces
+from ..utils.data_utils import load_surface, load_surfaces
 
 class ObjaversePartDataset(torch.utils.data.Dataset):
     def __init__(

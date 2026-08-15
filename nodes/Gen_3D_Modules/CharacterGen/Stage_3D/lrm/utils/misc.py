@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import torch
 from packaging import version
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from .config import config_to_primitive
 from .typing import *
 

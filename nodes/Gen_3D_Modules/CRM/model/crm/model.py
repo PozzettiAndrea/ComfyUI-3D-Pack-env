@@ -8,13 +8,13 @@ import cv2
 import trimesh
 import nvdiffrast.torch as dr
 
-from CRM.model.archs.decoders.shape_texture_net import TetTexNet
-from CRM.model.archs.unet import UNetPP
-from CRM.util.renderer import Renderer
-from CRM.model.archs.mlp_head import SdfMlp, RgbMlp
+from ..archs.decoders.shape_texture_net import TetTexNet
+from ..archs.unet import UNetPP
+from ...util.renderer import Renderer
+from ..archs.mlp_head import SdfMlp, RgbMlp
 import xatlas
 
-from mesh_processer.mesh import Mesh
+from .....mesh_processer.mesh import Mesh
 
 
 class Dummy:

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch.autograd import Function
 from torch.amp import custom_bwd, custom_fwd
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from .typing import *
 
 

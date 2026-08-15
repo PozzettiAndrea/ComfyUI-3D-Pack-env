@@ -14,10 +14,10 @@ from torchvision import transforms
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPTokenizer
 
-from craftsman import register
-from craftsman.utils.base import Updateable
-from craftsman.utils.config import parse_structured
-from craftsman.utils.typing import *
+from .. import register
+from ..utils.base import Updateable
+from ..utils.config import parse_structured
+from ..utils.typing import *
 
 def rot2eul(R):
     beta = -np.arcsin(R[2,0])

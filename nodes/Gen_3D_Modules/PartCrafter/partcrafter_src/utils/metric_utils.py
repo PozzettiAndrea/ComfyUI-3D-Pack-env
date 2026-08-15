@@ -1,4 +1,4 @@
-from partcrafter_src.utils.typing_utils import *
+from .typing_utils import *
 
 import trimesh
 import numpy as np

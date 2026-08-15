@@ -5,10 +5,10 @@ import torch.nn.functional as F
 from kiui.lpips import LPIPS
 from kiui.cam import orbit_camera
 
-from LGM.core.unet import UNet
-from LGM.core.options import Options
-from LGM.core.gs import GaussianRenderer
-from LGM.core.utils import get_rays
+from .core.unet import UNet
+from .core.options import Options
+from .core.gs import GaussianRenderer
+from .core.utils import get_rays
         
 class LargeMultiviewGaussianModel(nn.Module):
     def __init__(

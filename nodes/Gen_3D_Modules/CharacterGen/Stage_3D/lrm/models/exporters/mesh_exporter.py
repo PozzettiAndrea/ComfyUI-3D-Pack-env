@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import torch
 
-from CharacterGen.Stage_3D import lrm
+from .... import lrm
 from ..renderers.base import BaseRenderer
 from .base import Exporter, ExporterOutput
 from ..mesh import Mesh

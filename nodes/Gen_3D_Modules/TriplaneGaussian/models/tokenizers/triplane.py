@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from einops import rearrange, repeat
 
-from TriplaneGaussian.utils.base import BaseModule
-from TriplaneGaussian.utils.typing import *
+from ...utils.base import BaseModule
+from ...utils.typing import *
 
 
 class TriplaneLearnablePositionalEmbedding(BaseModule):

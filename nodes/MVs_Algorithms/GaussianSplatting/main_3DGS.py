@@ -9,8 +9,8 @@ import comfy.utils
 
 from .main_3DGS_renderer import GaussianSplattingRenderer
 
-from shared_utils.camera_utils import BaseCameraController, MiniCam, calculate_fovX, get_projection_matrix
-from shared_utils.image_utils import prepare_torch_img
+from ...shared_utils.camera_utils import BaseCameraController, MiniCam, calculate_fovX, get_projection_matrix
+from ...shared_utils.image_utils import prepare_torch_img
 
 class GSParams:
     def __init__(

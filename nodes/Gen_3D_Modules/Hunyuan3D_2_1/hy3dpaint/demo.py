@@ -12,10 +12,10 @@
 # fine-tuning enabling code and other elements of the foregoing made publicly available
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
-from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+from .textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
 
 try:
-    from utils.torchvision_fix import apply_fix
+    from .utils.torchvision_fix import apply_fix
 
     apply_fix()
 except ImportError:

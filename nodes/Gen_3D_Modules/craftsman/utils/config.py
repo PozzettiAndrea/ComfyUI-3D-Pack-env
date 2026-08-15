@@ -4,8 +4,8 @@ from datetime import datetime
 
 from omegaconf import OmegaConf
 
-import craftsman
-from craftsman.utils.typing import *
+from ... import craftsman
+from .typing import *
 
 # ============ Register OmegaConf Recolvers ============= #
 OmegaConf.register_new_resolver(

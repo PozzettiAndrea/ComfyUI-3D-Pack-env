@@ -3,9 +3,9 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from craftsman.utils.config import parse_structured
-from craftsman.utils.misc import get_device, load_module_weights
-from craftsman.utils.typing import *
+from .config import parse_structured
+from .misc import get_device, load_module_weights
+from .typing import *
 
 
 class Configurable:

@@ -3,7 +3,7 @@ warnings.filterwarnings("ignore")  # ignore all warnings
 import diffusers.utils.logging as diffusion_logging
 diffusion_logging.set_verbosity_error()  # ignore diffusers warnings
 
-from partcrafter_src.utils.typing_utils import *
+from .utils.typing_utils import *
 
 import os
 import argparse
@@ -34,33 +34,16 @@ from transformers import (
     BitImageProcessor,
     Dinov2Model,
 )
-from partcrafter_src.schedulers import RectifiedFlowScheduler
-from partcrafter_src.models.autoencoders import TripoSGVAEModel
-from partcrafter_src.models.transformers import PartCrafterDiTModel
-from partcrafter_src.pipelines.pipeline_partcrafter import PartCrafterPipeline
+from .schedulers import RectifiedFlowScheduler
+from .models.autoencoders import TripoSGVAEModel
+from .models.transformers import PartCrafterDiTModel
+from .pipelines.pipeline_partcrafter import PartCrafterPipeline
 
-from partcrafter_src.datasets import (
-    ObjaversePartDataset, 
-    BatchedObjaversePartDataset, 
-    MultiEpochsDataLoader, 
-    yield_forever
-)
-from partcrafter_src.utils.data_utils import get_colored_mesh_composition
-from partcrafter_src.utils.train_utils import (
-    MyEMAModel, 
-    get_configs,
-    get_optimizer,
-    get_lr_scheduler,
-    save_experiment_params,
-    save_model_architecture,
-)
-from partcrafter_src.utils.render_utils import (
-    render_views_around_mesh, 
-    render_normal_views_around_mesh, 
-    make_grid_for_images_or_videos,
-    export_renderings
-)
-from partcrafter_src.utils.metric_utils import compute_cd_and_f_score_in_training
+from .datasets import ObjaversePartDataset, BatchedObjaversePartDataset, MultiEpochsDataLoader, yield_forever
+from .utils.data_utils import get_colored_mesh_composition
+from .utils.train_utils import MyEMAModel, get_configs, get_optimizer, get_lr_scheduler, save_experiment_params, save_model_architecture
+from .utils.render_utils import render_views_around_mesh, render_normal_views_around_mesh, make_grid_for_images_or_videos, export_renderings
+from .utils.metric_utils import compute_cd_and_f_score_in_training
 
 def main():
     PROJECT_NAME = "PartCrafter"

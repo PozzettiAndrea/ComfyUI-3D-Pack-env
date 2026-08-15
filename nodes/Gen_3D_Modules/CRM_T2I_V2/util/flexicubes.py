@@ -6,7 +6,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION & AFFILIATES is strictly prohibited.
 import torch
-from CRM_T2I_V2.util.tables import *
+from .tables import *
 
 __all__ = [
     'FlexiCubes'

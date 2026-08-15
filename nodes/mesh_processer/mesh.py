@@ -8,8 +8,8 @@ import numpy as np
 from kiui.op import safe_normalize, dot
 from kiui.typing import *
 
-from shared_utils.sh_utils import SH2RGB
-from shared_utils.image_utils import prepare_torch_img
+from ..shared_utils.sh_utils import SH2RGB
+from ..shared_utils.image_utils import prepare_torch_img
 
 
 class Mesh:

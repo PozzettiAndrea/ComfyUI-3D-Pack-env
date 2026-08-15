@@ -1,6 +1,6 @@
 import pySDF as SDF
 import numpy as np
-from CharacterGen.Stage_3D.lrm.models.isosurface import MarchingTetrahedraHelper
+from ..models.isosurface import MarchingTetrahedraHelper
 
 def get_tetra_for_mesh(mesh_path, resolution=128):
     isosurface_helper = MarchingTetrahedraHelper(resolution, f"load/{resolution}_tets.npz")

@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 from torch_scatter import scatter_mean, scatter_max
 
-from TriplaneGaussian.utils.base import BaseModule
-from TriplaneGaussian.models.networks import ResnetBlockFC
-from TriplaneGaussian.utils.ops import scale_tensor
+from ...utils.base import BaseModule
+from ..networks import ResnetBlockFC
+from ...utils.ops import scale_tensor
 
 class LocalPoolPointnet(BaseModule):
     ''' PointNet-based encoder network with ResNet blocks for each point.

@@ -2,13 +2,13 @@ import torch
 from dataclasses import dataclass, field
 from einops import rearrange
 
-from TriplaneGaussian import find
-from TriplaneGaussian.models.image_feature import ImageFeature
-from TriplaneGaussian.utils.saving import SaverMixin
-from TriplaneGaussian.utils.config import parse_structured
-from TriplaneGaussian.utils.ops import points_projection
-from TriplaneGaussian.utils.misc import load_module_weights
-from TriplaneGaussian.utils.typing import *
+from . import find
+from .models.image_feature import ImageFeature
+from .utils.saving import SaverMixin
+from .utils.config import parse_structured
+from .utils.ops import points_projection
+from .utils.misc import load_module_weights
+from .utils.typing import *
 
 class TGS(torch.nn.Module, SaverMixin):
     @dataclass
@@ -62,7 +62,7 @@ class TGS(torch.nn.Module, SaverMixin):
         weights = self.cfg.camera_embedder.pop("weights") if "weights" in self.cfg.camera_embedder else None
         self.camera_embedder = find(self.cfg.camera_embedder_cls)(**self.cfg.camera_embedder)
         if weights:
-            from TriplaneGaussian.utils.misc import load_module_weights
+            from .utils.misc import load_module_weights
             weights_path, module_name = weights.split(":")
             state_dict = load_module_weights(
                 weights_path, module_name=module_name, map_location="cpu"

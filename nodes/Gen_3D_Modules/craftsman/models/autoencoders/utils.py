@@ -10,10 +10,10 @@ import numpy as np
 from einops import repeat, rearrange
 from skimage import measure
 
-from craftsman.utils.base import BaseModule
-from craftsman.utils.typing import *
-from craftsman.utils.misc import get_world_size
-from craftsman.utils.ops import generate_dense_grid_points
+from ...utils.base import BaseModule
+from ...utils.typing import *
+from ...utils.misc import get_world_size
+from ...utils.ops import generate_dense_grid_points
 
 VALID_EMBED_TYPES = ["identity", "fourier", "hashgrid", "sphere_harmonic", "triplane_fourier"]
 

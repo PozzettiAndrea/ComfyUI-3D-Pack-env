@@ -4,16 +4,12 @@ from dataclasses import dataclass, field
 import pytorch_lightning as pl
 import torch.nn.functional as F
 
-from craftsman.utils.base import (
-    Updateable,
-    update_end_if_possible,
-    update_if_possible,
-)
-from craftsman.utils.scheduler import parse_optimizer, parse_scheduler
-from craftsman.utils.config import parse_structured
-from craftsman.utils.misc import C, cleanup, get_device, load_module_weights
+from ..utils.base import Updateable, update_end_if_possible, update_if_possible
+from ..utils.scheduler import parse_optimizer, parse_scheduler
+from ..utils.config import parse_structured
+from ..utils.misc import C, cleanup, get_device, load_module_weights
 #from craftsman.utils.saving import SaverMixin
-from craftsman.utils.typing import *
+from ..utils.typing import *
 
 
 #class BaseSystem(pl.LightningModule, Updateable, SaverMixin):

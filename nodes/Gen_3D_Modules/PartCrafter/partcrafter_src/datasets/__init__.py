@@ -1,4 +1,4 @@
-from partcrafter_src.utils.typing_utils import *
+from ..utils.typing_utils import *
 
 import torch
 

@@ -1,9 +1,9 @@
 import numpy as np
 import torch
-from CRM_T2I_V2.imagedream.camera_utils import get_camera_for_index
-from CRM_T2I_V2.imagedream.ldm.util import set_seed, add_random_background
-from CRM_T2I_V2.libs.base_utils import do_resize_content
-from CRM_T2I_V2.imagedream.ldm.models.diffusion.ddim import DDIMSampler
+from ..imagedream.camera_utils import get_camera_for_index
+from ..imagedream.ldm.util import set_seed, add_random_background
+from .base_utils import do_resize_content
+from ..imagedream.ldm.models.diffusion.ddim import DDIMSampler
 from torchvision import transforms as TF
 
 

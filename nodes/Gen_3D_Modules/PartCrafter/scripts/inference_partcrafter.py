@@ -16,11 +16,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 
-from partcrafter_src.utils.data_utils import get_colored_mesh_composition, scene_to_parts, load_surfaces
-from partcrafter_src.utils.render_utils import render_views_around_mesh, render_normal_views_around_mesh, make_grid_for_images_or_videos, export_renderings
-from partcrafter_src.pipelines.pipeline_partcrafter import PartCrafterPipeline
-from partcrafter_src.utils.image_utils import prepare_image
-from partcrafter_src.models.briarmbg import BriaRMBG
+from ..partcrafter_src.utils.data_utils import get_colored_mesh_composition, scene_to_parts, load_surfaces
+from ..partcrafter_src.utils.render_utils import render_views_around_mesh, render_normal_views_around_mesh, make_grid_for_images_or_videos, export_renderings
+from ..partcrafter_src.pipelines.pipeline_partcrafter import PartCrafterPipeline
+from ..partcrafter_src.utils.image_utils import prepare_image
+from ..partcrafter_src.models.briarmbg import BriaRMBG
 
 @torch.no_grad()
 def run_triposg(

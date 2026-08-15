@@ -14,8 +14,8 @@ from transformers import CLIPTokenizer, CLIPImageProcessor
 from transformers.utils import ModelOutput
 from typing import Iterable, Optional, Union, List
 
-import craftsman
-from craftsman.utils.typing import *
+from .... import craftsman
+from ...utils.typing import *
 from .clip.modeling_clip import CLIPModel
 from .clip.modeling_conditional_clip import ConditionalCLIPModel
 from .base import BaseEmbedder, ImageType

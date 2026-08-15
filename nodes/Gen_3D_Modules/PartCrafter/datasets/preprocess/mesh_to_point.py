@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 import json
 
-from partcrafter_src.utils.data_utils import scene_to_parts, mesh_to_surface, normalize_mesh
+from ...partcrafter_src.utils.data_utils import scene_to_parts, mesh_to_surface, normalize_mesh
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

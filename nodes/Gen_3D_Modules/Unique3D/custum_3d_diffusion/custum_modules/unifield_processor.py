@@ -7,7 +7,7 @@ from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel, Image
 from diffusers.models.attention_processor import Attention, AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from dataclasses import dataclass, field
 from diffusers.loaders import IPAdapterMixin
-from Unique3D.custum_3d_diffusion.custum_modules.attention_processors import add_extra_processor, switch_extra_processor, add_multiview_processor, switch_multiview_processor, add_switch, change_switch
+from .attention_processors import add_extra_processor, switch_extra_processor, add_multiview_processor, switch_multiview_processor, add_switch, change_switch
 
 @dataclass
 class AttnConfig:

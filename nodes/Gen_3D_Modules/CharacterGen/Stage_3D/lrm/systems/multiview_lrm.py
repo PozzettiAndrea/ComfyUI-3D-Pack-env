@@ -4,13 +4,13 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 
-from CharacterGen.Stage_3D import lrm
-from CharacterGen.Stage_3D.lrm.models.mesh import Mesh
-from CharacterGen.Stage_3D.lrm.systems.base import BaseLossConfig, BaseSystem
-from CharacterGen.Stage_3D.lrm.utils.ops import binary_cross_entropy, get_plucker_rays
-from CharacterGen.Stage_3D.lrm.utils.typing import *
-from CharacterGen.Stage_3D.lrm.models.lpips import LPIPS
-from CharacterGen.Stage_3D.lrm.utils.misc import time_recorder as tr
+from ... import lrm
+from ..models.mesh import Mesh
+from .base import BaseLossConfig, BaseSystem
+from ..utils.ops import binary_cross_entropy, get_plucker_rays
+from ..utils.typing import *
+from ..models.lpips import LPIPS
+from ..utils.misc import time_recorder as tr
 
 
 @dataclass

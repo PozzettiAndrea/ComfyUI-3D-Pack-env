@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from craftsman.utils.typing import *
+from .typing import *
 
 
 def dot(x, y):

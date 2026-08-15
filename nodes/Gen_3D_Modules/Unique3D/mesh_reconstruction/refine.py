@@ -8,8 +8,8 @@ from .remesh import calc_vertex_normals
 from .opt import MeshOptimizer
 from .func import make_star_cameras_orthographic, make_star_cameras_orthographic_py3d
 from .render import NormalsRenderer, Pytorch3DNormalsRenderer
-from Unique3D.scripts.project_mesh import multiview_color_projection, get_cameras_list
-from Unique3D.scripts.utils import to_py3d_mesh, from_py3d_mesh, init_target
+from ..scripts.project_mesh import multiview_color_projection, get_cameras_list
+from ..scripts.utils import to_py3d_mesh, from_py3d_mesh, init_target
 
 def run_mesh_refine(vertices, faces, pils: List[Image.Image], steps=100, start_edge_len=0.02, end_edge_len=0.005, decay=0.99, update_normal_interval=10, update_warmup=10, return_mesh=False, process_inputs=False, process_outputs=False):
     if process_inputs:

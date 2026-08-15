@@ -50,83 +50,68 @@ from .mesh_processer.mesh_utils import (
     decimate_mesh,
 )
 
-from FlexiCubes.flexicubes_trainer import FlexiCubesTrainer
-from DiffRastMesh.diff_mesh import DiffMesh, DiffMeshCameraController
-from DiffRastMesh.diff_mesh import DiffRastRenderer
-from GaussianSplatting.main_3DGS import GaussianSplatting3D, GaussianSplattingCameraController, GSParams
-from GaussianSplatting.main_3DGS_renderer import GaussianSplattingRenderer
-from NeRF.Instant_NGP import InstantNGP
+from .MVs_Algorithms.FlexiCubes.flexicubes_trainer import FlexiCubesTrainer
+from .MVs_Algorithms.DiffRastMesh.diff_mesh import DiffMesh, DiffMeshCameraController
+from .MVs_Algorithms.DiffRastMesh.diff_mesh import DiffRastRenderer
+from .MVs_Algorithms.GaussianSplatting.main_3DGS import GaussianSplatting3D, GaussianSplattingCameraController, GSParams
+from .MVs_Algorithms.GaussianSplatting.main_3DGS_renderer import GaussianSplattingRenderer
+from .MVs_Algorithms.NeRF.Instant_NGP import InstantNGP
 
-from TriplaneGaussian.triplane_gaussian_transformers import TGS
-from TriplaneGaussian.utils.config import ExperimentConfig as ExperimentConfigTGS, load_config as load_config_tgs
-from TriplaneGaussian.data import CustomImageOrbitDataset
-from TriplaneGaussian.utils.misc import todevice, get_device
-from LGM.core.options import config_defaults
-from LGM.mvdream.pipeline_mvdream import MVDreamPipeline
-from LGM.large_multiview_gaussian_model import LargeMultiviewGaussianModel
-from LGM.nerf_marching_cubes_converter import GSConverterNeRFMarchingCubes
-from TripoSR.system import TSR
-from StableFast3D.sf3d import utils as sf3d_utils
-from StableFast3D.sf3d.system import SF3D
-from InstantMesh.utils.camera_util import oribt_camera_poses_to_input_cameras
-from CRM.model.crm.model import ConvolutionalReconstructionModel
-from CRM.model.crm.sampler import CRMSampler
-from Wonder3D.pipelines.pipeline_mvdiffusion_image import MVDiffusionImagePipeline
-from Wonder3D.data.single_image_dataset import SingleImageDataset as MVSingleImageDataset
-from Wonder3D.utils.misc import load_config as load_config_wonder3d
-from Zero123Plus.pipeline import Zero123PlusPipeline
-from Era3D.mvdiffusion.pipelines.pipeline_mvdiffusion_unclip import StableUnCLIPImg2ImgPipeline
-from Era3D.mvdiffusion.data.single_image_dataset import SingleImageDataset as Era3DSingleImageDataset
-from Era3D.utils.misc import load_config as load_config_era3d
-from Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2mvimg import StableDiffusionImage2MVCustomPipeline
-from Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2img import StableDiffusionImageCustomPipeline
-from Unique3D.scripts.mesh_init import fast_geo
-from Unique3D.scripts.utils import from_py3d_mesh, to_py3d_mesh, to_pyml_mesh, simple_clean_mesh
-from Unique3D.scripts.project_mesh import multiview_color_projection, multiview_color_projection_texture, get_cameras_list, get_orbit_cameras_list
-from Unique3D.mesh_reconstruction.recon import reconstruct_stage1
-from Unique3D.mesh_reconstruction.refine import run_mesh_refine
-from CharacterGen.character_inference import Inference2D_API, Inference3D_API
-from CharacterGen.Stage_3D.lrm.utils.config import load_config as load_config_cg3d
-import craftsman
-from craftsman.systems.base import BaseSystem
-from craftsman.utils.config import ExperimentConfig as ExperimentConfigCraftsman, load_config as load_config_craftsman
-from CRM_T2I_V2.model.crm.sampler import CRMSamplerV2
-from CRM_T2I_V2.model.t2i_adapter_v2 import T2IAdapterV2
-from CRM_T2I_V3.model.crm.sampler import CRMSamplerV3
-from Hunyuan3D_V1.mvd.hunyuan3d_mvd_std_pipeline import HunYuan3D_MVD_Std_Pipeline
-from Hunyuan3D_V1.mvd.hunyuan3d_mvd_lite_pipeline import Hunyuan3D_MVD_Lite_Pipeline
-from Hunyuan3D_V1.infer import Views2Mesh
-from Hunyuan3D_V2.hy3dgen.shapegen import FaceReducer, FloaterRemover, DegenerateFaceRemover, Hunyuan3DDiTFlowMatchingPipeline
-from Hunyuan3D_V2.hy3dgen.texgen import Hunyuan3DPaintPipeline
-from Hunyuan3D_V2.hy3dgen.rembg import BackgroundRemover
-from TRELLIS.trellis.pipelines import TrellisImageTo3DPipeline
-from TRELLIS.trellis.utils import postprocessing_utils
-from TripoSG.pipelines.pipeline_triposg import TripoSGPipeline
-from TripoSG.pipelines.pipeline_triposg_scribble import TripoSGScribblePipeline
-from Stable3DGen.pipeline_builders import StableGenPipelineBuilder
-from MV_Adapter.mvadapter_node_utils import (
-        prepare_pipeline as mvadapter_prepare_pipeline,
-        run_pipeline as mvadapter_run_pipeline, 
-        prepare_tg2mv_pipeline as mvadapter_prepare_tg2mv_pipeline,
-        run_tg2mv_pipeline as mvadapter_run_tg2mv_pipeline,
-        prepare_texture_pipeline as mvadapter_prepare_texture_pipeline,
-        download_texture_checkpoints,
-    )
+from .Gen_3D_Modules.TriplaneGaussian.triplane_gaussian_transformers import TGS
+from .Gen_3D_Modules.TriplaneGaussian.utils.config import ExperimentConfig as ExperimentConfigTGS, load_config as load_config_tgs
+from .Gen_3D_Modules.TriplaneGaussian.data import CustomImageOrbitDataset
+from .Gen_3D_Modules.TriplaneGaussian.utils.misc import todevice, get_device
+from .Gen_3D_Modules.LGM.core.options import config_defaults
+from .Gen_3D_Modules.LGM.mvdream.pipeline_mvdream import MVDreamPipeline
+from .Gen_3D_Modules.LGM.large_multiview_gaussian_model import LargeMultiviewGaussianModel
+from .Gen_3D_Modules.LGM.nerf_marching_cubes_converter import GSConverterNeRFMarchingCubes
+from .Gen_3D_Modules.TripoSR.system import TSR
+from .Gen_3D_Modules.StableFast3D.sf3d import utils as sf3d_utils
+from .Gen_3D_Modules.StableFast3D.sf3d.system import SF3D
+from .Gen_3D_Modules.InstantMesh.utils.camera_util import oribt_camera_poses_to_input_cameras
+from .Gen_3D_Modules.CRM.model.crm.model import ConvolutionalReconstructionModel
+from .Gen_3D_Modules.CRM.model.crm.sampler import CRMSampler
+from .Gen_3D_Modules.Wonder3D.pipelines.pipeline_mvdiffusion_image import MVDiffusionImagePipeline
+from .Gen_3D_Modules.Wonder3D.data.single_image_dataset import SingleImageDataset as MVSingleImageDataset
+from .Gen_3D_Modules.Wonder3D.utils.misc import load_config as load_config_wonder3d
+from .Gen_3D_Modules.Zero123Plus.pipeline import Zero123PlusPipeline
+from .Gen_3D_Modules.Era3D.mvdiffusion.pipelines.pipeline_mvdiffusion_unclip import StableUnCLIPImg2ImgPipeline
+from .Gen_3D_Modules.Era3D.mvdiffusion.data.single_image_dataset import SingleImageDataset as Era3DSingleImageDataset
+from .Gen_3D_Modules.Era3D.utils.misc import load_config as load_config_era3d
+from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2mvimg import StableDiffusionImage2MVCustomPipeline
+from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2img import StableDiffusionImageCustomPipeline
+from .Gen_3D_Modules.Unique3D.scripts.mesh_init import fast_geo
+from .Gen_3D_Modules.Unique3D.scripts.utils import from_py3d_mesh, to_py3d_mesh, to_pyml_mesh, simple_clean_mesh
+from .Gen_3D_Modules.Unique3D.scripts.project_mesh import multiview_color_projection, multiview_color_projection_texture, get_cameras_list, get_orbit_cameras_list
+from .Gen_3D_Modules.Unique3D.mesh_reconstruction.recon import reconstruct_stage1
+from .Gen_3D_Modules.Unique3D.mesh_reconstruction.refine import run_mesh_refine
+from .Gen_3D_Modules.CharacterGen.character_inference import Inference2D_API, Inference3D_API
+from .Gen_3D_Modules.CharacterGen.Stage_3D.lrm.utils.config import load_config as load_config_cg3d
+from .Gen_3D_Modules import craftsman
+from .Gen_3D_Modules.craftsman.systems.base import BaseSystem
+from .Gen_3D_Modules.craftsman.utils.config import ExperimentConfig as ExperimentConfigCraftsman, load_config as load_config_craftsman
+from .Gen_3D_Modules.CRM_T2I_V2.model.crm.sampler import CRMSamplerV2
+from .Gen_3D_Modules.CRM_T2I_V2.model.t2i_adapter_v2 import T2IAdapterV2
+from .Gen_3D_Modules.CRM_T2I_V3.model.crm.sampler import CRMSamplerV3
+from .Gen_3D_Modules.Hunyuan3D_V1.mvd.hunyuan3d_mvd_std_pipeline import HunYuan3D_MVD_Std_Pipeline
+from .Gen_3D_Modules.Hunyuan3D_V1.mvd.hunyuan3d_mvd_lite_pipeline import Hunyuan3D_MVD_Lite_Pipeline
+from .Gen_3D_Modules.Hunyuan3D_V1.infer import Views2Mesh
+from .Gen_3D_Modules.Hunyuan3D_V2.hy3dgen.shapegen import FaceReducer, FloaterRemover, DegenerateFaceRemover, Hunyuan3DDiTFlowMatchingPipeline
+from .Gen_3D_Modules.Hunyuan3D_V2.hy3dgen.texgen import Hunyuan3DPaintPipeline
+from .Gen_3D_Modules.Hunyuan3D_V2.hy3dgen.rembg import BackgroundRemover
+from .Gen_3D_Modules.TRELLIS.trellis.pipelines import TrellisImageTo3DPipeline
+from .Gen_3D_Modules.TRELLIS.trellis.utils import postprocessing_utils
+from .Gen_3D_Modules.TripoSG.pipelines.pipeline_triposg import TripoSGPipeline
+from .Gen_3D_Modules.TripoSG.pipelines.pipeline_triposg_scribble import TripoSGScribblePipeline
+from .Gen_3D_Modules.Stable3DGen.pipeline_builders import StableGenPipelineBuilder
+from .Gen_3D_Modules.MV_Adapter.mvadapter_node_utils import prepare_pipeline as mvadapter_prepare_pipeline, run_pipeline as mvadapter_run_pipeline, prepare_tg2mv_pipeline as mvadapter_prepare_tg2mv_pipeline, run_tg2mv_pipeline as mvadapter_run_tg2mv_pipeline, prepare_texture_pipeline as mvadapter_prepare_texture_pipeline, download_texture_checkpoints
 from mmgp import offload, profile_type
-from Gen_3D_Modules.Hunyuan3D_2_1 import (
-    FaceReducer_2_1, 
-    Hunyuan3DDiTFlowMatchingPipeline_2_1,
-    export_to_trimesh_2_1,
-    BackgroundRemover_2_1,
-    Hunyuan3DPaintPipeline_2_1,
-    Hunyuan3DPaintConfig_2_1,
-    create_glb_with_pbr_materials_2_1,
-)
-from Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.utils.torchvision_fix import apply_fix
+from .Gen_3D_Modules.Hunyuan3D_2_1 import FaceReducer_2_1, Hunyuan3DDiTFlowMatchingPipeline_2_1, export_to_trimesh_2_1, BackgroundRemover_2_1, Hunyuan3DPaintPipeline_2_1, Hunyuan3DPaintConfig_2_1, create_glb_with_pbr_materials_2_1
+from .Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.utils.torchvision_fix import apply_fix
 apply_fix()
-from Gen_3D_Modules.PartCrafter.partcrafter_src.pipelines.pipeline_partcrafter import PartCrafterPipeline
-from Gen_3D_Modules.PartCrafter.partcrafter_src.utils.data_utils import get_colored_mesh_composition
-from Gen_3D_Modules.PartCrafter.partcrafter_src.utils.render_utils import explode_mesh
+from .Gen_3D_Modules.PartCrafter.partcrafter_src.pipelines.pipeline_partcrafter import PartCrafterPipeline
+from .Gen_3D_Modules.PartCrafter.partcrafter_src.utils.data_utils import get_colored_mesh_composition
+from .Gen_3D_Modules.PartCrafter.partcrafter_src.utils.render_utils import explode_mesh
 import zipfile
 
 
@@ -583,7 +568,7 @@ class Get_Masks_From_Normal_Maps:
     CATEGORY = "Comfy3D/Preprocessor"
     
     def make_image_grid(self, normal_maps):
-        from Unique3D.scripts.utils import get_normal_map_masks
+        from .Gen_3D_Modules.Unique3D.scripts.utils import get_normal_map_masks
         pil_normal_list = torch_imgs_to_pils(normal_maps)
         normal_masks = get_normal_map_masks(pil_normal_list)
         normal_masks = torch.stack(normal_masks, dim=0).to(normal_maps.dtype).to(normal_maps.device)
@@ -613,7 +598,7 @@ class Rotate_Normal_Maps_Horizontally:
     def make_image_grid(self, normal_maps, normal_masks, clockwise):
         rotate_direction = 1 if clockwise is True else -1
         if normal_maps.shape[0] > 1:
-            from Unique3D.scripts.utils import rotate_normals_torch
+            from .Gen_3D_Modules.Unique3D.scripts.utils import rotate_normals_torch
             pil_image_list = torch_imgs_to_pils(normal_maps, normal_masks)
             pil_image_list = rotate_normals_torch(pil_image_list, return_types='pil', rotate_direction=rotate_direction)
             normal_maps = pils_to_torch_imgs(pil_image_list, normal_maps.dtype, normal_maps.device)
@@ -2190,10 +2175,7 @@ class Load_CRM_MVDiffusion_Model:
     
     def load_CRM(self, model_name, crm_config_path):
         
-        from CRM.imagedream.ldm.util import (
-            instantiate_from_config,
-            get_obj_from_str,
-        )
+        from .Gen_3D_Modules.CRM.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
 
         crm_config_path = os.path.join(self.config_root_path_abs, crm_config_path)
         
@@ -2509,7 +2491,7 @@ class Load_InstantMesh_Reconstruction_Model:
     
     def load_LRM(self, model_name):
 
-        from InstantMesh.utils.train_util import instantiate_from_config
+        from .Gen_3D_Modules.InstantMesh.utils.train_util import instantiate_from_config
 
         is_flexicubes = True if model_name.startswith('instant_mesh') else False
         
@@ -2863,9 +2845,9 @@ class Load_Unique3D_Custom_UNet:
     
     def load_diffusers_unet(self, pipe, config_name):
 
-        from Unique3D.custum_3d_diffusion.trainings.config_classes import ExprimentConfig
-        from Unique3D.custum_3d_diffusion.custum_modules.unifield_processor import AttnConfig, ConfigurableUNet2DConditionModel
-        from Unique3D.custum_3d_diffusion.trainings.utils import load_config
+        from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.config_classes import ExprimentConfig
+        from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.custum_modules.unifield_processor import AttnConfig, ConfigurableUNet2DConditionModel
+        from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.utils import load_config
         # Download models and configs
         cfg_path = os.path.join(self.config_path_abs, config_name + ".yaml")
         checkpoint_dir_path = os.path.join(self.checkpoints_dir_abs, config_name)
@@ -2928,7 +2910,7 @@ class Unique3D_MVDiffusion_Model:
         radius,
         preprocess_images,
     ):
-        from Unique3D.scripts.utils import simple_image_preprocess
+        from .Gen_3D_Modules.Unique3D.scripts.utils import simple_image_preprocess
 
         pil_image_list = torch_imgs_to_pils(reference_image)
         for i in range(len(pil_image_list)):
@@ -3519,10 +3501,7 @@ class Load_CRM_T2I_V2_Models:
     
     def load_CRM(self, crm_model_name, crm_config_path):
         
-        from CRM_T2I_V2.imagedream.ldm.util import (
-            instantiate_from_config,
-            get_obj_from_str,
-        )
+        from .Gen_3D_Modules.CRM_T2I_V2.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
         
         t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_checkpoints_dir_abs).to(DEVICE, dtype=WEIGHT_DTYPE)
 
@@ -3680,10 +3659,7 @@ class Load_CRM_T2I_V3_Models:
     
     def load_CRM(self, crm_model_name, crm_t2i_v3_model_name, crm_config_path, rank, use_dora):
         
-        from CRM_T2I_V3.imagedream.ldm.util import (
-            instantiate_from_config,
-            get_obj_from_str,
-        )
+        from .Gen_3D_Modules.CRM_T2I_V3.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
         
         t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_checkpoints_dir_abs).to(DEVICE, dtype=WEIGHT_DTYPE)
 
@@ -5154,7 +5130,7 @@ class MVAdapter_Texture_Projection:
         pil_grid.save(temp_grid_path)
         
         try:
-            from Gen_3D_Modules.MV_Adapter.mvadapter.pipelines.pipeline_texture import ModProcessConfig
+            from .Gen_3D_Modules.MV_Adapter.mvadapter.pipelines.pipeline_texture import ModProcessConfig
             
             rgb_process_config = ModProcessConfig(
                 view_upscale=view_upscale,
@@ -5546,7 +5522,7 @@ class Hunyuan3D_21_TexGen:
                     except Exception as e:
                         print(f"Warning: Failed to create GLB with PBR materials: {e}")
                         # Fallback to basic conversion
-                        from Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.DifferentiableRenderer.mesh_utils import convert_obj_to_glb
+                        from .Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.DifferentiableRenderer.mesh_utils import convert_obj_to_glb
                         convert_obj_to_glb(result_path, glb_path)
                         print(f"Created GLB with basic conversion: {glb_path}")
                 

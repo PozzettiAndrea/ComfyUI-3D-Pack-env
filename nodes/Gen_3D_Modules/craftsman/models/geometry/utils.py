@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import craftsman
-from craftsman.utils.typing import *
+from .... import craftsman
+from ...utils.typing import *
 
 
 def dot(x, y):

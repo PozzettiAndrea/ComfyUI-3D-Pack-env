@@ -1,6 +1,6 @@
 import os
 import logging
-from trellis_fork.backend_config import get_sparse_backend, get_spconv_algo
+from ....backend_config import get_sparse_backend, get_spconv_algo
 
 BACKEND = get_sparse_backend()
 SPCONV_ALGO = get_spconv_algo()

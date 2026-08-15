@@ -5,7 +5,7 @@ import nvdiffrast.torch as dr
 from PIL import Image
 from typing import List, Union
 
-from CRM.util.utils import get_tri
+from ....CRM.util.utils import get_tri
 
 class CRMSamplerV3:
     @classmethod

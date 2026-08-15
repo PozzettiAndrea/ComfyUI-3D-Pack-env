@@ -14,20 +14,10 @@ from PIL import Image
 from safetensors.torch import load_model
 from torch import Tensor
 
-from StableFast3D.sf3d.models.isosurface import MarchingTetrahedraHelper
-from StableFast3D.sf3d.models.mesh import Mesh
-from StableFast3D.sf3d.models.utils import (
-    BaseModule,
-    ImageProcessor,
-    convert_data,
-    dilate_fill,
-    dot,
-    find_class,
-    float32_to_uint8_np,
-    normalize,
-    scale_tensor,
-)
-from StableFast3D.sf3d.utils import create_intrinsic_from_fov_deg, default_cond_c2w
+from .models.isosurface import MarchingTetrahedraHelper
+from .models.mesh import Mesh
+from .models.utils import BaseModule, ImageProcessor, convert_data, dilate_fill, dot, find_class, float32_to_uint8_np, normalize, scale_tensor
+from .utils import create_intrinsic_from_fov_deg, default_cond_c2w
 
 from .texture_baker import TextureBaker
 

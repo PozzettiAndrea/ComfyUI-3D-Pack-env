@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 from ..utils.ops import dot
 from ..utils.typing import *
 from ..utils.misc import time_recorder as tr, time_recorder_enabled
@@ -315,7 +315,7 @@ class Mesh:
             bpy_context,
             bpy_export,
         )
-        from CharacterGen.Stage_3D.lrm.utils.misc import time_recorder as tr
+        from ..utils.misc import time_recorder as tr
 
         v_pos, t_pos_idx = self.v_pos.cpu().numpy(), self.t_pos_idx.cpu().numpy()
         with bpy_context():

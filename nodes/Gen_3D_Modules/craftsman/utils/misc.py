@@ -6,8 +6,8 @@ import torch
 import torch.distributed as dist
 from packaging import version
 
-from craftsman.utils.config import config_to_primitive
-from craftsman.utils.typing import *
+from .config import config_to_primitive
+from .typing import *
 
 
 

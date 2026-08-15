@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.optim import lr_scheduler
 
-from CharacterGen.Stage_3D import lrm
+from ... import lrm
 
 
 def get_scheduler(name):

@@ -6,7 +6,7 @@ sys.path.append('.')
 
 import torch
 import numpy as np
-from partcrafter_src.models.autoencoders.autoencoder_kl_triposg import TripoSGVAEModel
+from .partcrafter_src.models.autoencoders.autoencoder_kl_triposg import TripoSGVAEModel
 
 def test_both_sampling_versions():
     """Quick test of both sampling versions"""
