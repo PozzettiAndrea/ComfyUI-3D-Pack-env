@@ -1,6 +1,6 @@
 from typing import *
 import importlib
-from trellis.backend_config import get_sparse_backend, get_attention_backend, get_debug_mode
+from trellis_fork.backend_config import get_sparse_backend, get_attention_backend, get_debug_mode
 
 BACKEND = get_sparse_backend()
 DEBUG = get_debug_mode()

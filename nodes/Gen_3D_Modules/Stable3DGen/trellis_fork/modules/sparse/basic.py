@@ -2,7 +2,7 @@ from typing import *
 import torch
 import torch.nn as nn
 
-from trellis.backend_config import get_debug_mode, get_spconv_algo, get_sparse_backend
+from trellis_fork.backend_config import get_debug_mode, get_spconv_algo, get_sparse_backend
 
 
 SparseTensorData = None # Lazy import

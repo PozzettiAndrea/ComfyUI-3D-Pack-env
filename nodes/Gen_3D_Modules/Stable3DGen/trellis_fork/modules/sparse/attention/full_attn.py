@@ -3,7 +3,7 @@ from typing import *
 import torch
 import math
 from .. import SparseTensor
-from trellis.backend_config import (
+from trellis_fork.backend_config import (
     get_attention_backend,
     get_debug_mode,
     get_available_backends

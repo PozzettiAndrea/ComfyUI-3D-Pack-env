@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import Literal
-from trellis.backend_config import (
+from trellis_fork.backend_config import (
     get_attention_backend,
     get_debug_mode,
 )

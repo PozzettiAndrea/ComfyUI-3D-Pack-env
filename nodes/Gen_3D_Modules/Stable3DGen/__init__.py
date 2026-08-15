@@ -21,7 +21,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Add trellis package path
-trellis_path = os.path.join(current_dir, "trellis")
+trellis_path = os.path.join(current_dir, "trellis_fork")
 if os.path.exists(trellis_path) and trellis_path not in sys.path:
     sys.path.insert(0, trellis_path)
     # logger.info(f"Added trellis path to sys.path: {trellis_path}")
@@ -34,7 +34,7 @@ if os.path.exists(trellis_path) and trellis_path not in sys.path:
 
 # Verify trellis package is importable
 try:
-    import trellis
+    import trellis_fork
     # logger.info("Trellis package imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import trellis package: {e}")

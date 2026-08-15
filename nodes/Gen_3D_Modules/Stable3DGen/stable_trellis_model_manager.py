@@ -10,14 +10,14 @@ from huggingface_hub import hf_hub_download, snapshot_download
 from typing import Dict, Union
 import json
 import importlib  # Import the importlib module
-from trellis.modules.utils import convert_module_to_f16, convert_module_to_f32
+from trellis_fork.modules.utils import convert_module_to_f16, convert_module_to_f32
 
 logger = logging.getLogger('model_manager')
 
 __attributes = {
-    'SparseStructureDecoder': 'trellis.models.sparse_structure_vae',
-    'SparseStructureFlowModel': 'trellis.models.sparse_structure_flow',
-    'SLatFlowModel': 'trellis.models.structured_latent_flow',
+    'SparseStructureDecoder': 'trellis_fork.models.sparse_structure_vae',
+    'SparseStructureFlowModel': 'trellis_fork.models.sparse_structure_flow',
+    'SLatFlowModel': 'trellis_fork.models.structured_latent_flow',
 }
 
 __all__ = list(__attributes.keys())
