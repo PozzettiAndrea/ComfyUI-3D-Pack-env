@@ -1,7 +1,12 @@
-import server
+import logging
 import os
 
-from ..shared_utils.log_utils import cstr
+import server
+
+# This module runs in the HOST process, so it must not import anything from
+# nodes/ (that package lives in the isolated env and pulls torch). Upstream's
+# coloured `cstr` logger moved there with shared_utils; plain logging here.
+log = logging.getLogger("comfy3d")
 
 web = server.web
 
@@ -30,7 +35,7 @@ async def view_file(request):
     if request.remote in web_conf['clients_ip'] and "filepath" in query:
         filepath = query["filepath"]
         
-        cstr(f"[Server Query view_file] Get file {filepath}").msg.print()
+        log.info("[Comfy3D] view_file: %s", filepath)
         
         if filepath.lower().endswith(SUPPORTED_VIEW_EXTENSIONS) and os.path.exists(filepath):
             return web.FileResponse(filepath)

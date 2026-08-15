@@ -1,16 +1,18 @@
 [project]
-name = "ComfyUI-3D-Pack"
-description = "Make ComfyUI generates 3D assets as good & convenient as it generates image/video!"
+name = "ComfyUI-3D-Pack-env"
+description = "ComfyUI-3D-Pack packaged with comfy-env: all 22 model families in one isolated environment, native CUDA extensions from prebuilt wheels, host ComfyUI environment left untouched."
 version = "0.1.6"
 license = { file = "LICENSE" }
+# dependencies stay dynamic from requirements.txt -- which now contains only
+# comfy-env. The real dependency set lives in nodes/comfy-env.toml.
 dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+dependencies = { file = ["requirements.txt"] }
 
 [project.urls]
-Repository = "https://github.com/MrForExample/ComfyUI-3D-Pack"
+Repository = "https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env"
 
 [tool.comfy]
-PublisherId = "mr-for-example"
-DisplayName = "ComfyUI-3D-Pack"
+PublisherId = "pznodes"
+DisplayName = "ComfyUI-3D-Pack-env"
 Icon = ""

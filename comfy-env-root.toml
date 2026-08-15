@@ -1,0 +1,18 @@
+# Pack-level config. Never describes the Python environment -- that is
+# nodes/comfy-env.toml's job.
+#
+# No [types] table yet, deliberately. This pack's sockets are MESH (its own
+# mesh_processer.mesh.Mesh class), DIFFUSERS_PIPE / TEXTURE_PIPE (loaded model
+# handles that must never be serialised -- comfy-env keeps them worker-side and
+# passes references), ORBIT_CAMPOSES and LIST (plain data the transport already
+# handles). Undeclared types still cross the boundary; they just take the
+# generic path rather than a fast one.
+#
+# Future work, once this pack is proven: declare
+#     [types]
+#     MESH = "custom"
+# with a serialization.py that decomposes Mesh into shared-memory arrays
+# (vertices/faces/uvs), the way GeometryPack does for trimesh.Trimesh. That
+# moves meshes off the pickle rung and -- if the tag is chosen to match the
+# underlying library type -- lets this pack exchange geometry with
+# GeometryPack / TRELLIS2 / Hunyuan3D-Part directly.

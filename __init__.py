@@ -1,77 +1,63 @@
-import os
-import sys
-import folder_paths as comfy_paths
-from pyhocon import ConfigFactory
+"""ComfyUI-3D-Pack-env -- comfy-env packaging of ComfyUI-3D-Pack.
+
+Runs in the HOST ComfyUI process, so it must stay light: the only third-party
+import here is comfy_env itself. All model code lives in nodes/ and is imported
+inside the isolated environment by register_nodes().
+"""
+
 import logging
+import os
 
-# ROOT_PATH = os.path.join(comfy_paths.get_folder_paths("custom_nodes")[0], "ComfyUI-3D-Pack")
+from comfy_env import register_nodes
+
+log = logging.getLogger("comfy3d")
+
 ROOT_PATH = os.path.dirname(os.path.realpath(__file__))
-MODULE_PATH = os.path.join(ROOT_PATH, "Gen_3D_Modules")
-MV_ALGO_PATH = os.path.join(ROOT_PATH, "MVs_Algorithms")
 
-sys.path.append(ROOT_PATH)
-sys.path.append(MODULE_PATH)
-sys.path.append(MV_ALGO_PATH)
+# --- Host-side web server -------------------------------------------------
+# webserver/server.py registers the /viewfile aiohttp route used by the 3D
+# viewer in web/. It must run in the MAIN process (PromptServer lives here),
+# not in the worker. Its config comes from Configs/system.conf -- parsed with
+# pyhocon when available, otherwise defaulted, because the host environment is
+# supposed to contain comfy-env and nothing else.
+_DEFAULT_WEB_CONF = {
+    "clients_ip": ["127.0.0.1", "0.0.0.0", "172.17.0.0", "172.17.0.1"],
+}
 
-import shutil
-import __main__
-import importlib
-import inspect
-from .webserver.server import server, set_web_conf
-from .shared_utils.log_utils import setup_logger
 
-# Common formatter for simplicity, adjust as needed
-common_formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+def _load_system_conf():
+    conf_path = os.path.join(ROOT_PATH, "Configs", "system.conf")
+    try:
+        from pyhocon import ConfigFactory  # optional in the host env
+        with open(conf_path) as fh:
+            conf = ConfigFactory.parse_string(fh.read())
+        return conf["web"], conf["huggingface.token"]
+    except Exception as e:
+        log.info("[Comfy3D] using default web config (%s)", e)
+        return _DEFAULT_WEB_CONF, ""
 
-# Setup logging for transformers
-setup_logger('transformers', logging.WARNING, [logging.WARNING], [logging.ERROR, logging.CRITICAL], common_formatter)
 
-# Setup logging for diffusers
-setup_logger('diffusers_logging', logging.INFO, [logging.INFO, logging.WARNING], [logging.ERROR, logging.CRITICAL], common_formatter)
+try:
+    from .webserver.server import set_web_conf
 
-# Redirect warnings to the logging system
-logging.captureWarnings(True)
+    _web_conf, _hf_token = _load_system_conf()
+    set_web_conf(_web_conf)
+    if isinstance(_hf_token, str) and _hf_token:
+        try:
+            from huggingface_hub import login
 
-conf_path = os.path.join(ROOT_PATH, "Configs/system.conf")
-# Configuration
-f = open(conf_path)
-conf_text = f.read()
-f.close()
-sys_conf = ConfigFactory.parse_string(conf_text)
+            login(token=_hf_token)
+        except Exception as e:
+            log.warning("[Comfy3D] huggingface login skipped: %s", e)
+except Exception as e:
+    # A missing viewer route must never cost us the nodes.
+    log.warning("[Comfy3D] web server route not registered: %s", e)
 
-set_web_conf(sys_conf['web'])
+# --- Nodes ----------------------------------------------------------------
+# Scans nodes/ for comfy-env.toml, materialises/uses the isolated env, runs a
+# metadata scan inside it and synthesises proxy classes. The host process never
+# imports torch, diffusers or any model code.
+NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS = register_nodes()
 
-# Log into huggingface if given user specificed token
-hf_token = sys_conf['huggingface.token']
-if isinstance(hf_token, str) and len(hf_token) > 0:
-    from huggingface_hub import login
-    login(token=hf_token)
-
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}
-
-nodes_filename = "nodes"
-module = importlib.import_module(f".{nodes_filename}", package=__name__)
-for name, cls in inspect.getmembers(module, inspect.isclass):
-    if cls.__module__ == module.__name__:
-        name = name.replace("_", " ")
-
-        node = f"[Comfy3D] {name}"
-        disp = f"{name}"
-
-        NODE_CLASS_MAPPINGS[node] = cls
-        NODE_DISPLAY_NAME_MAPPINGS[node] = disp
-        
 WEB_DIRECTORY = "./web"
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
-
-# # Cleanup old extension folder
-folder_web = os.path.join(os.path.dirname(os.path.realpath(__main__.__file__)), "web")
-extensions_folder = os.path.join(folder_web, 'extensions', 'ComfyUI-3D-Pack')
-
-def cleanup():
-    if os.path.exists(extensions_folder):
-        shutil.rmtree(extensions_folder)
-        print('\033[34mComfy3D: \033[92mRemoved old extension folder\033[0m')
-
-cleanup()
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

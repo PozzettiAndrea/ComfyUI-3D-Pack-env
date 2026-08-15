@@ -171,7 +171,11 @@ DIFFUSERS_SCHEDULER_DICT = OrderedDict([
     ("KDPM2DiscreteScheduler,", KDPM2DiscreteScheduler),
 ])
 
-ROOT_PATH = os.path.dirname(os.path.realpath(__file__))
+NODES_PATH = os.path.dirname(os.path.realpath(__file__))
+# nodes/ sits one level below the pack root. Checkpoints/, Configs/,
+# Gen_3D_Modules/ and MVs_Algorithms/ all stay at the root, so ROOT_PATH keeps
+# its original meaning and every path derived from it below is unchanged.
+ROOT_PATH = os.path.dirname(NODES_PATH)
 CKPT_ROOT_PATH = os.path.join(ROOT_PATH, "Checkpoints")
 CKPT_DIFFUSERS_PATH = os.path.join(CKPT_ROOT_PATH, "Diffusers")
 CONFIG_ROOT_PATH = os.path.join(ROOT_PATH, "Configs")
@@ -5150,7 +5154,7 @@ class MVAdapter_Texture_Projection:
         pil_grid.save(temp_grid_path)
         
         try:
-            from .Gen_3D_Modules.MV_Adapter.mvadapter.pipelines.pipeline_texture import ModProcessConfig
+            from Gen_3D_Modules.MV_Adapter.mvadapter.pipelines.pipeline_texture import ModProcessConfig
             
             rgb_process_config = ModProcessConfig(
                 view_upscale=view_upscale,
@@ -5542,7 +5546,7 @@ class Hunyuan3D_21_TexGen:
                     except Exception as e:
                         print(f"Warning: Failed to create GLB with PBR materials: {e}")
                         # Fallback to basic conversion
-                        from .Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.DifferentiableRenderer.mesh_utils import convert_obj_to_glb
+                        from Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.DifferentiableRenderer.mesh_utils import convert_obj_to_glb
                         convert_obj_to_glb(result_path, glb_path)
                         print(f"Created GLB with basic conversion: {glb_path}")
                 
