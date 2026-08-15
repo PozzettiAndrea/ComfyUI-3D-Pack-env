@@ -6,6 +6,7 @@ from omegaconf import OmegaConf, DictConfig, ListConfig
 import torch
 import torch.distributed as dist
 from typing import Union
+from ......_vendor_paths import import_module as _vendor_import
 
 
 def get_config_from_file(config_file: str) -> Union[DictConfig, ListConfig]:
@@ -30,9 +31,9 @@ def get_config_from_file(config_file: str) -> Union[DictConfig, ListConfig]:
 def get_obj_from_str(string, reload=False):
     module, cls = string.rsplit(".", 1)
     if reload:
-        module_imp = importlib.import_module(module)
+        module_imp = _vendor_import(module)
         importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
+    return getattr(_vendor_import(module), cls)
 
 
 def get_obj_from_config(config):

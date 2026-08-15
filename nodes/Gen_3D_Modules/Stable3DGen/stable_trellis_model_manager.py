@@ -11,6 +11,7 @@ from typing import Dict, Union
 import json
 import importlib  # Import the importlib module
 from .trellis_fork.modules.utils import convert_module_to_f16, convert_module_to_f32
+from ..._vendor_paths import import_module as _vendor_import
 
 logger = logging.getLogger('model_manager')
 
@@ -25,7 +26,7 @@ __all__ = list(__attributes.keys())
 def __getattr__(name):
     if name in __attributes:
         module_name = __attributes[name]
-        module = importlib.import_module(module_name, package=None) # Import the module
+        module = _vendor_import(module_name) # Import the module
         return getattr(module, name)
     raise AttributeError(f"module {__name__} has no attribute {name}")
 

@@ -13,6 +13,7 @@ import torch.nn.functional as F
 import trimesh
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
+from ..._vendor_paths import import_module as _vendor_import
 
 def parse_structured(fields: Any, cfg: Optional[Union[dict, DictConfig]] = None) -> Any:
     scfg = OmegaConf.merge(OmegaConf.structured(fields), cfg)
@@ -22,7 +23,7 @@ def parse_structured(fields: Any, cfg: Optional[Union[dict, DictConfig]] = None)
 def find_class(cls_string):
     module_string = ".".join(cls_string.split(".")[:-1])
     cls_name = cls_string.split(".")[-1]
-    module = importlib.import_module(module_string, package=None)
+    module = _vendor_import(module_string)
     cls = getattr(module, cls_name)
     return cls
 

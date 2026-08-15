@@ -11,6 +11,7 @@ from queue import Queue
 
 from inspect import isfunction
 from PIL import Image, ImageDraw, ImageFont
+from ....._vendor_paths import import_module as _vendor_import
 
 
 def log_txt_as_img(wh, xc, size=10):
@@ -91,9 +92,9 @@ def get_obj_from_str(string, reload=False):
     module, cls = string.rsplit(".", 1)
     # import pdb; pdb.set_trace()
     if reload:
-        module_imp = importlib.import_module(module)
+        module_imp = _vendor_import(module)
         importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
+    return getattr(_vendor_import(module), cls)
 
 
 def _do_parallel_data_prefetch(func, Q, data, idx, idx_to_fn=False):

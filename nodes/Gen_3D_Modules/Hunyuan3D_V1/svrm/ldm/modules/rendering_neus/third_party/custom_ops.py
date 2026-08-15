@@ -19,6 +19,7 @@ import uuid
 import torch
 import torch.utils.cpp_extension
 from torch.utils.file_baton import FileBaton
+from ........_vendor_paths import import_module as _vendor_import
 
 #----------------------------------------------------------------------------
 # Global options.
@@ -141,7 +142,7 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
             torch.utils.cpp_extension.load(name=module_name, verbose=verbose_build, sources=sources, **build_kwargs)
 
         # Load.
-        module = importlib.import_module(module_name)
+        module = _vendor_import(module_name)
 
     except:
         if verbosity == 'brief':

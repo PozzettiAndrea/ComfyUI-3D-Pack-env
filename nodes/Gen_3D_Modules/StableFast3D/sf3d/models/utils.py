@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int, Num
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
+from ....._vendor_paths import import_module as _vendor_import
 
 
 class BaseModule(nn.Module):
@@ -35,7 +36,7 @@ class BaseModule(nn.Module):
 def find_class(cls_string):
     module_string = ".".join(cls_string.split(".")[:-1])
     cls_name = cls_string.split(".")[-1]
-    module = importlib.import_module(module_string, package=None)
+    module = _vendor_import(module_string)
     cls = getattr(module, cls_name)
     return cls
 

@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch import optim
 import torchvision
+from ....._vendor_paths import import_module as _vendor_import
 
 
 def pil_rectangle_crop(im):
@@ -137,9 +138,9 @@ def instantiate_from_config(config):
 def get_obj_from_str(string, reload=False):
     module, cls = string.rsplit(".", 1)
     if reload:
-        module_imp = importlib.import_module(module)
+        module_imp = _vendor_import(module)
         importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
+    return getattr(_vendor_import(module), cls)
 
 
 class AdamWwithEMAandWings(optim.Optimizer):

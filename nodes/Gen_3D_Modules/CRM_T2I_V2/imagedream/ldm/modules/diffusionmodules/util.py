@@ -15,6 +15,7 @@ import torch.nn as nn
 import numpy as np
 from einops import repeat
 import importlib
+from ......._vendor_paths import import_module as _vendor_import
 
 
 def instantiate_from_config(config):
@@ -30,9 +31,9 @@ def instantiate_from_config(config):
 def get_obj_from_str(string, reload=False):
     module, cls = string.rsplit(".", 1)
     if reload:
-        module_imp = importlib.import_module(module)
+        module_imp = _vendor_import(module)
         importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
+    return getattr(_vendor_import(module), cls)
 
 
 def make_beta_schedule(

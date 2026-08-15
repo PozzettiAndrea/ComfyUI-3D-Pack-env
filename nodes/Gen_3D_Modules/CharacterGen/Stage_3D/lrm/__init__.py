@@ -1,10 +1,11 @@
 import importlib
+from ....._vendor_paths import import_module as _vendor_import
 
 
 def find(cls_string):
     module_string = ".".join(cls_string.split(".")[:-1])
     cls_name = cls_string.split(".")[-1]
-    module = importlib.import_module(module_string, package=None)
+    module = _vendor_import(module_string)
     cls = getattr(module, cls_name)
     return cls
 

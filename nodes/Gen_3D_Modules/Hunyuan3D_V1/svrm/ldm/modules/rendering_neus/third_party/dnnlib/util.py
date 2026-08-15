@@ -33,6 +33,7 @@ import uuid
 
 from distutils.util import strtobool
 from typing import Any, List, Tuple, Union
+from ........._vendor_paths import import_module as _vendor_import
 
 
 # Util classes
@@ -250,7 +251,7 @@ def get_module_from_obj_name(obj_name: str) -> Tuple[types.ModuleType, str]:
     # try each alternative in turn
     for module_name, local_obj_name in name_pairs:
         try:
-            module = importlib.import_module(module_name) # may raise ImportError
+            module = _vendor_import(module_name) # may raise ImportError
             get_obj_from_module(module, local_obj_name) # may raise AttributeError
             return module, local_obj_name
         except:
@@ -259,7 +260,7 @@ def get_module_from_obj_name(obj_name: str) -> Tuple[types.ModuleType, str]:
     # maybe some of the modules themselves contain errors?
     for module_name, _local_obj_name in name_pairs:
         try:
-            importlib.import_module(module_name) # may raise ImportError
+            _vendor_import(module_name) # may raise ImportError
         except ImportError:
             if not str(sys.exc_info()[1]).startswith("No module named '" + module_name + "'"):
                 raise
@@ -267,7 +268,7 @@ def get_module_from_obj_name(obj_name: str) -> Tuple[types.ModuleType, str]:
     # maybe the requested attribute is missing?
     for module_name, local_obj_name in name_pairs:
         try:
-            module = importlib.import_module(module_name) # may raise ImportError
+            module = _vendor_import(module_name) # may raise ImportError
             get_obj_from_module(module, local_obj_name) # may raise AttributeError
         except ImportError:
             pass

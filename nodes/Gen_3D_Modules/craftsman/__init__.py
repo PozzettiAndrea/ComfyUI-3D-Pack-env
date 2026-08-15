@@ -1,4 +1,5 @@
 import importlib
+from ..._vendor_paths import import_module as _vendor_import
 
 __modules__ = {}
 
@@ -23,7 +24,7 @@ def find(name):
         try:
             module_string = ".".join(name.split(".")[:-1])
             cls_name = name.split(".")[-1]
-            module = importlib.import_module(module_string, package=None)
+            module = _vendor_import(module_string)
             return getattr(module, cls_name)
         except Exception as e:
             raise ValueError(f"Module {name} not found!")
