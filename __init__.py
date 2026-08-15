@@ -26,14 +26,14 @@ SUPPORTED_VIEW_EXTENSIONS = (
     ".png", ".jpg", ".jpeg", ".mtl", ".obj", ".glb", ".ply", ".splat",
 )
 
-# Config comes from Configs/system.conf. pyhocon is OPTIONAL: the host env is
+# Config comes from nodes/Configs/system.conf. pyhocon is OPTIONAL: the host env is
 # supposed to hold comfy-env and nothing else, so fall back to the upstream
 # defaults when it is absent.
 _DEFAULT_CLIENTS_IP = ["127.0.0.1", "0.0.0.0", "172.17.0.0", "172.17.0.1"]
 
 
 def _load_system_conf():
-    conf_path = os.path.join(ROOT_PATH, "Configs", "system.conf")
+    conf_path = os.path.join(ROOT_PATH, "nodes", "Configs", "system.conf")
     try:
         from pyhocon import ConfigFactory
 
@@ -41,7 +41,7 @@ def _load_system_conf():
             conf = ConfigFactory.parse_string(fh.read())
         return list(conf["web"]["clients_ip"]), conf["huggingface.token"]
     except Exception as e:
-        log.info("[Comfy3D] Configs/system.conf not parsed (%s); using defaults", e)
+        log.info("[Comfy3D] nodes/Configs/system.conf not parsed (%s); using defaults", e)
         return _DEFAULT_CLIENTS_IP, ""
 
 

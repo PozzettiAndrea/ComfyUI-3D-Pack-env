@@ -31,7 +31,6 @@ CHARACTER_GEN_2D_DATA_ABS_PATH = os.path.join(CHARACTER_GEN_ROOT_ABS_PATH, "Stag
 CHARACTER_GEN_3D_ABS_PATH = os.path.join(CHARACTER_GEN_ROOT_ABS_PATH, "Stage_3D")
 CHARACTER_GEN_3D_DATA_ABS_PATH = os.path.join(CHARACTER_GEN_3D_ABS_PATH, "material")
 
-sys.path.append(CHARACTER_GEN_3D_ABS_PATH)
 
 def get_bg_color(bg_color):
     if bg_color == 'white':

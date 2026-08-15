@@ -166,7 +166,6 @@ class CodeSnapshot(Callback):
 if __name__ == "__main__":
     # add cwd for convenience and to make classes in this file available when
     # running as `python main.py`
-    sys.path.append(os.getcwd())
     torch.set_float32_matmul_precision("medium")
 
     parser = get_parser()

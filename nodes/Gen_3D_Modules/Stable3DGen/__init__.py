@@ -10,27 +10,7 @@ import folder_paths
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('ComfyUI-Hi3DGen')
 
-# Add parent directory to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-
-# Add both current and parent dir to handle different installation scenarios
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-# Add trellis package path
-trellis_path = os.path.join(current_dir, "trellis_fork")
-if os.path.exists(trellis_path) and trellis_path not in sys.path:
-    sys.path.insert(0, trellis_path)
-    # logger.info(f"Added trellis path to sys.path: {trellis_path}")
-
-# Add stablx package path
-stablex_path = os.path.join(current_dir, "stablex")
-if os.path.exists(trellis_path) and trellis_path not in sys.path:
-    sys.path.insert(0, trellis_path)
-    # logger.info(f"Added stablex path to sys.path: {trellis_path}")
+# trellis_fork / stablex are imported package-relatively; no sys.path setup.
 
 # Verify trellis package is importable
 try:

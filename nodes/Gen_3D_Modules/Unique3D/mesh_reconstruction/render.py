@@ -139,7 +139,6 @@ def save_tensor_to_img(tensor, save_dir):
 if __name__ == "__main__":
     import sys
     import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from .func import make_star_cameras_orthographic, make_star_cameras_orthographic_py3d
     cameras = make_star_cameras_orthographic_py3d([0, 270, 180, 90], device="cuda", focal=1., dist=4.0)
     mv,proj = make_star_cameras_orthographic(4, 1)

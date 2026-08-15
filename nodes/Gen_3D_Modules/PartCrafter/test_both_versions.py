@@ -2,7 +2,6 @@
 
 import sys
 import os
-sys.path.append('.')
 
 import torch
 import numpy as np

@@ -11,8 +11,6 @@ import trimesh
 from huggingface_hub import snapshot_download
 from PIL import Image
 from accelerate.utils import set_seed
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "partcrafter_src")))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 

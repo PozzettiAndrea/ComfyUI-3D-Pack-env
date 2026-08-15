@@ -25,9 +25,8 @@ gone:
 Both scripts are idempotent: re-run them after `git merge upstream/main` to
 re-apply the transformation to freshly pulled code.
 
-The vendored families still contain their own sys.path.insert calls. They are
-now dead weight rather than load-bearing -- nothing depends on the names they
-publish -- and are left in place to keep upstream diffs small.
+The vendored families' own sys.path.insert calls are gone too -- all 11 of
+them. There is no sys.path manipulation anywhere in this pack.
 """
 
 import inspect

@@ -22,7 +22,6 @@ from typing import List
 from .DifferentiableRenderer.MeshRender import MeshRender
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
 from .utils.simplify_mesh_utils import remesh_mesh
 from .utils.multiview_utils import multiviewDiffusionNet
 from .utils.pipeline_utils import ViewProcessor

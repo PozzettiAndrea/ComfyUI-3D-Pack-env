@@ -161,9 +161,9 @@ NODES_PATH = os.path.dirname(os.path.realpath(__file__))
 # Gen_3D_Modules/ and MVs_Algorithms/ all stay at the root, so ROOT_PATH keeps
 # its original meaning and every path derived from it below is unchanged.
 ROOT_PATH = os.path.dirname(NODES_PATH)
-CKPT_ROOT_PATH = os.path.join(ROOT_PATH, "Checkpoints")
+CKPT_ROOT_PATH = os.path.join(NODES_PATH, "Checkpoints")
 CKPT_DIFFUSERS_PATH = os.path.join(CKPT_ROOT_PATH, "Diffusers")
-CONFIG_ROOT_PATH = os.path.join(ROOT_PATH, "Configs")
+CONFIG_ROOT_PATH = os.path.join(NODES_PATH, "Configs")
 MODULE_ROOT_PATH = os.path.join(NODES_PATH, "Gen_3D_Modules")
 
 MANIFEST = {

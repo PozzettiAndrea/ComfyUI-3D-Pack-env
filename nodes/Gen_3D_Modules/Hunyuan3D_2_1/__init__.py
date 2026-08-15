@@ -9,25 +9,7 @@ import platform
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('ComfyUI-Hunyuan3D-2.1')
 
-# Add parent directory to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-
-# Add paths for Hunyuan3D-2.1 modules
-hy3dshape_path = os.path.join(current_dir, "hy3dshape")
-hy3dpaint_path = os.path.join(current_dir, "hy3dpaint")
-
-# Add all necessary paths
-paths_to_add = [
-    current_dir,
-    hy3dshape_path,
-    hy3dpaint_path,
-]
-
-for path in paths_to_add:
-    if os.path.exists(path) and path not in sys.path:
-        sys.path.insert(0, path)
-        logger.info(f"Added Hunyuan3D-2.1 path to sys.path: {path}")
+# hy3dshape / hy3dpaint are imported package-relatively; no sys.path setup.
 
 # Apply torchvision fix before other imports
 try:
