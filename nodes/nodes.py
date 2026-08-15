@@ -179,7 +179,7 @@ ROOT_PATH = os.path.dirname(NODES_PATH)
 CKPT_ROOT_PATH = os.path.join(ROOT_PATH, "Checkpoints")
 CKPT_DIFFUSERS_PATH = os.path.join(CKPT_ROOT_PATH, "Diffusers")
 CONFIG_ROOT_PATH = os.path.join(ROOT_PATH, "Configs")
-MODULE_ROOT_PATH = os.path.join(ROOT_PATH, "Gen_3D_Modules")
+MODULE_ROOT_PATH = os.path.join(NODES_PATH, "Gen_3D_Modules")
 
 MANIFEST = {
     "name": "ComfyUI-3D-Pack",
@@ -2639,7 +2639,7 @@ class Era3D_MVDiffusion_Model:
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
 
         # Get the dataset
-        cfg.dataset.prompt_embeds_path = os.path.join(ROOT_PATH, cfg.dataset.prompt_embeds_path)
+        cfg.dataset.prompt_embeds_path = os.path.join(NODES_PATH, cfg.dataset.prompt_embeds_path)
         dataset = Era3DSingleImageDataset(
             single_image=single_image,
             crop_size=image_crop_size,
@@ -5378,8 +5378,8 @@ class Load_Hunyuan3D_21_TexGen_Pipeline:
         # Configure pipeline
         conf = Hunyuan3DPaintConfig_2_1(max_num_view=max_num_view, resolution=resolution)
         conf.realesrgan_ckpt_path = realesrgan_path
-        conf.multiview_cfg_path = os.path.join(ROOT_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
-        conf.custom_pipeline = os.path.join(ROOT_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/hunyuanpaintpbr")
+        conf.multiview_cfg_path = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
+        conf.custom_pipeline = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/hunyuanpaintpbr")
 
         pipeline = Hunyuan3DPaintPipeline_2_1(conf)
         
