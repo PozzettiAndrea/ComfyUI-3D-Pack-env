@@ -1,3 +1,11 @@
+> [!WARNING]
+> Warning, uses experimental package `comfy-env` to attempt a one click isolated install. Will download and use pixi package manager.
+
+> [!NOTE]
+> **This is a packaging fork.** Forked from [MrForExample/ComfyUI-3D-Pack](https://github.com/MrForExample/ComfyUI-3D-Pack) at commit [`9e8096e`](https://github.com/MrForExample/ComfyUI-3D-Pack/commit/9e8096e50c5bcf35e1f3e34c6ae06216101f8a11) (2025-11-17) and wrapped with `comfy-env` to make installation easier. All models, algorithms and credit belong to the upstream authors — this fork changes **packaging only**, not model behaviour.
+>
+> What that means in practice: the whole pack runs in its own isolated environment, so installing it no longer replaces torch/torchvision/xformers in your ComfyUI environment; native CUDA extensions come from prebuilt wheels covering CUDA 12.4–13.0 × torch 2.4–2.11 × Python 3.10–3.14 instead of one frozen py3.12/torch2.5.1/cu124 combination; and no compiler is required for the normal path.
+
 # ComfyUI-3D-Pack
 **Make 3D assets generation in ComfyUI good and convenient as it generates image/video!**
 <br>
@@ -12,39 +20,44 @@ This is an extensive node suite that enables ComfyUI to process 3D inputs (Mesh 
 <a href=#supporters>Supporters</a>
 </span>
 
-## Install:
-**Can be installed directly from [ComfyUI-Manager](https://github.com/ltdrdata/ComfyUI-Manager)🚀**
+## Install
 
-**Alternatively you can download [Comfy3D-WinPortable](https://github.com/YanWenKun/Comfy3D-WinPortable) made by [YanWenKun](https://github.com/YanWenKun)**
+Three options, in order of speed → reliability:
 
-- [Pre-builds](https://github.com/MrForExample/Comfy3D_Pre_Builds) are available for:
-  - Windows 10/11
-  - Python 3.12
-  - CUDA 12.4
-  - torch 2.5.1+cu124
-- [install.py](install.py) will download & install Pre-builds automatically according to your runtime environment, if it couldn't find corresponding Pre-builds, then [build script](_Pre_Builds/_Build_Scripts/auto_build_all.py) will start automatically, if automatic build doesn't work for you, then please check out [Semi-Automatic Build Guide](_Pre_Builds/README.md#build-required-packages-semi-automatically)
-- If you have any missing node in any open Comfy3D workflow, try simply click [Install Missing Custom Nodes](https://github.com/ltdrdata/ComfyUI-Manager?tab=readme-ov-file#support-of-missing-nodes-installation) in ComfyUI-Manager
-- In case there is missing python library, you can check [all the python dependencies of my dev environment](my-reqs.txt)
-- If for some reason your comfy3d can't download pre-trained models automatically, you can always download them manually and put them in to correct folder under [Checkpoints](Checkpoints)directory, but please **DON'T** overwrite any exist .json files
-- Docker install please check [DOCKER_INSTRUCTIONS.md](DOCKER_INSTRUCTIONS.md)
-- **Note:** at this moment, you'll still need to install [Visual Studio Build Tools for windows](_Pre_Builds/README.md#build-for-windows) and [install `gcc g++` for Linux](_Pre_Builds/README.md#build-for-linux) in order for `InstantNGP & Convert 3DGS to Mesh with NeRF and Marching_Cubes` nodes to work, since those two nodes used JIT torch cpp extension that builds in runtime, but I plan to replace those nodes
+1. **ComfyUI Manager** — search for `3D-Pack-env` in the Manager and install the highest version displayed. If that doesn't work, try nightly.
+2. **Manager via Git URL** — in ComfyUI Manager: "Install via Git URL" with `https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env.git`.
+3. **Manual (most reliable)**:
+   ```bash
+   cd ComfyUI/custom_nodes
+   git clone https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env.git
+   cd ComfyUI-3D-Pack-env
+   pip install -r requirements.txt --upgrade
+   python install.py
+   ```
 
-**For manual install**
-```bash
-# Fetch newest version of Comfy3D
-cd Your ComfyUI Root Directory\ComfyUI\custom_nodes\
-git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git
-cd ComfyUI-3D-Pack
+`requirements.txt` contains `comfy-env` and nothing else. `install.py` builds this
+pack's isolated environment from `nodes/comfy-env.toml` and fetches the prebuilt
+CUDA wheels; nothing is installed into your ComfyUI environment.
 
-# Install all dependencies
-Your ComfyUI Root Directory\python_embeded\python.exe -s -m pip install -r requirements.txt
-Your ComfyUI Root Directory\python_embeded\python.exe install.py
-```
+**Model weights** still download on first use, or can be placed manually under
+[`nodes/Checkpoints/`](nodes/Checkpoints) — don't overwrite the existing `.json` files.
 
+> **Please report any problems** you hit during installation — open a
+> [Discussion](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env/discussions) or
+> [Issue](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env/issues) on **this fork**,
+> not upstream, since packaging bugs here are not theirs. Very grateful for your help! 🙏
+
+### Known gaps
+
+A few native extensions are not yet in the prebuilt wheel index, so the families
+needing them will not load until they are built (tracked in
+[`nodes/comfy-env.toml`](nodes/comfy-env.toml)):
+`diff_gaussian_rasterization` and `simple_knn` (configured, awaiting a build run),
+and `diso`, `pointnet2_ops`, `vox2seq`, `custom_rasterizer` (no recipe yet).
 
 ## Features:
-- For use cases please check out [Example Workflows](./example_workflows/). [**Last update: 5/June/2025**]
-  - **Note:** you need to put [Example Inputs Files & Folders](example_workflows/_Example_Inputs_Files/) under ComfyUI Root Directory\ComfyUI\input folder before you can run the example workflow
+- For use cases please check out [Example Workflows](./workflows/). [**Last update: 5/June/2025**]
+  - **Note:** you need to put [Example Inputs Files & Folders](workflows/_Example_Inputs_Files/) under ComfyUI Root Directory\ComfyUI\input folder before you can run the example workflow
     
 - **PartCrafter**: [wgsxm/PartCrafter](https://github.com/wgsxm/PartCrafter)  
   - Two-model pipeline:
@@ -62,8 +75,8 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
     - [PartCrafter (object mode)](https://huggingface.co/wgsxm/PartCrafter)  
     - [PartCrafter-Scene (scene mode)](https://huggingface.co/wgsxm/PartCrafter-Scene)
   - Workflows:
-    - [Single Object](./example_workflows/PartCrafter/PartCrafter.json)  
-    - [Scene](./example_workflows/PartCrafter/PartCrafter-Scene.json)
+    - [Single Object](./workflows/PartCrafter/PartCrafter.json)  
+    - [Scene](./workflows/PartCrafter/PartCrafter-Scene.json)
       
   <video controls autoplay loop src="https://github.com/user-attachments/assets/b80bcc97-7381-4cf7-9ec6-ee48c8d58217"></video>
   <video controls autoplay loop src="https://github.com/user-attachments/assets/d82f4b32-4916-4286-8478-a86dd5da37a6"></video>
@@ -73,7 +86,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
     - Single image → 3D mesh (shape generation)
     - 3D mesh + reference image → 3D mesh with RGB texture
   - Model weights: https://huggingface.co/tencent/Hunyuan3D-2.1
-  - Workflows: [Full](./example_workflows/Hunyuan3D_2_1/Hunyuan2.1-Full.json), [Shapegen](./example_workflows/Hunyuan3D_2_1/Hunyuan2.1-Shapegen.json), [Texgen](./example_workflows/Hunyuan3D_2_1/Hunyuan2.1-Texgen.json)
+  - Workflows: [Full](./workflows/Hunyuan3D_2_1/Hunyuan2.1-Full.json), [Shapegen](./workflows/Hunyuan3D_2_1/Hunyuan2.1-Shapegen.json), [Texgen](./workflows/Hunyuan3D_2_1/Hunyuan2.1-Texgen.json)
 
   <video controls autoplay loop src="https://github.com/user-attachments/assets/514bbece-ca19-43cf-83ca-2ccc6c60039e"></video>
   <video controls autoplay loop src="https://github.com/user-attachments/assets/65f329e7-610f-4520-b0c6-6da62f8209d1"></video>
@@ -85,7 +98,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
     - TG2MV: Text prompt + 3D mesh to multi-view images
     - Texturing: Grid image + 3D mesh to textured mesh
   - Model weights: https://huggingface.co/huanngzh/mv-adapter
-  - Workflows: [IG2MV](./example_workflows/MV-Adapter/MV-Adapter-ig2mv.json), [T2MV](./example_workflows/MV-Adapter/MV-Adapter-tg2mv.json), [Texturing](./example_workflows/MV-Adapter/MV-Adapter-Texturing.json)
+  - Workflows: [IG2MV](./workflows/MV-Adapter/MV-Adapter-ig2mv.json), [T2MV](./workflows/MV-Adapter/MV-Adapter-tg2mv.json), [Texturing](./workflows/MV-Adapter/MV-Adapter-Texturing.json)
     
    <video controls autoplay loop src="https://github.com/user-attachments/assets/47b77c9e-a121-45c4-a6d0-f307bda1579c"></video>
    <video controls autoplay loop src="https://github.com/user-attachments/assets/35c6cee5-d408-4559-88aa-753741eacb95"></video>
@@ -98,7 +111,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
   - Model weights: 
     - Stable3DGen: https://huggingface.co/Stable-X/trellis-normal-v0-1
     - StableNormal: https://huggingface.co/Stable-X/yoso-normal-v1-8-1
-  - [Workflow](./example_workflows/Stable3DGen.json)
+  - [Workflow](./workflows/Stable3DGen.json)
     
   <video controls autoplay loop src="https://github.com/user-attachments/assets/2a38fa0a-4028-4fe5-a67a-bbc7c305da75"></video>
  
@@ -106,7 +119,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
   - Single image to 3D Mesh
   - Multi-views to 3D Mesh with RGB texture
   - Model weights: https://huggingface.co/tencent/Hunyuan3D-2, https://huggingface.co/tencent/Hunyuan3D-2mini
-  - [Workflows](./example_workflows/Hunyuan3D_V2)
+  - [Workflows](./workflows/Hunyuan3D_V2)
     
   <video controls autoplay loop src="https://github.com/user-attachments/assets/ae0f68d8-edd3-4bdd-9a9a-1f5ccc07a3d0"></video>
 
@@ -148,7 +161,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
 
 - **CharacterGen**: [zjp-shadow/CharacterGen](https://github.com/zjp-shadow/CharacterGen)
   - Single front view of a character with arbitrary pose
-  - Can [combine with Unique3D workflow](./example_workflows/CharacterGen/CharacterGen_to_Unique3D.json) for better result
+  - Can [combine with Unique3D workflow](./workflows/CharacterGen/CharacterGen_to_Unique3D.json) for better result
   - Model weights: https://huggingface.co/zjpshadow/CharacterGen/tree/main
  
   <video controls autoplay loop src="https://github.com/user-attachments/assets/4f0ae0c0-2d29-49f0-a6f2-a636dd4b4dcc"></video>
@@ -159,7 +172,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
     2. Consistent Multi-view images Upscale to 512X512, super resolution to 2048X2048
     3. Multi-view images to Normal maps with resolution: 512X512, super resolution to 2048X2048
     4. Multi-view images & Normal maps to 3D mesh with texture
-  - To use the [All stage Unique3D workflow](./example_workflows/Unique3D/Unique3D_All_Stages.json), Download Models:
+  - To use the [All stage Unique3D workflow](./workflows/Unique3D/Unique3D_All_Stages.json), Download Models:
     - [sdv1.5-pruned-emaonly](https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt) and put it into `Your ComfyUI root directory/ComfyUI/models/checkpoints`
     - [fine-tuned controlnet-tile](https://huggingface.co/spaces/Wuvin/Unique3D/tree/main/ckpt/controlnet-tile) and put it into `Your ComfyUI root directory/ComfyUI/models/controlnet`
     - [ip-adapter_sd15](https://huggingface.co/h94/IP-Adapter/blob/main/models/ip-adapter_sd15.safetensors) and put it into `Your ComfyUI root directory/ComfyUI/models/ipadapter`
@@ -209,7 +222,7 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
   - Generate spatial consistent 6 views images & normal maps from a single image
   - Model weights: https://huggingface.co/flamehaze1115/wonder3d-v1.0/tree/main
   
-  ![Wonder3D_FatCat_MVs](example_workflows/_Example_Outputs/Wonder3D_FatCat_MVs.jpg)
+  ![Wonder3D_FatCat_MVs](workflows/_Example_Outputs/Wonder3D_FatCat_MVs.jpg)
 
 - **Large Multiview Gaussian Model**: [3DTopia/LGM](https://github.com/3DTopia/LGM)
   - Enable single image to 3D Gaussian in less than 30 seconds on a RTX3080 GPU, later you can also convert 3D Gaussian to mesh
@@ -234,9 +247,9 @@ Your ComfyUI Root Directory\python_embeded\python.exe install.py
   - You can use it to generate the orbit camera poses and directly input to other 3D process node (e.g. GaussianSplatting and BakeTextureToMesh)
   - Example usage:
 
-    <img src="example_workflows/_Example_Outputs/Cammy_Cam_Rotate_Clockwise_Camposes.png" width="256"/> <img src="example_workflows/_Example_Outputs/Cammy_Cam_Rotate_Counter_Clockwise_Camposes.png" width="256"/>
+    <img src="workflows/_Example_Outputs/Cammy_Cam_Rotate_Clockwise_Camposes.png" width="256"/> <img src="workflows/_Example_Outputs/Cammy_Cam_Rotate_Counter_Clockwise_Camposes.png" width="256"/>
     <br>
-    <img src="example_workflows/_Example_Outputs/Cammy_Cam_Rotate_Clockwise.gif" width="256"/> <img src="example_workflows/_Example_Outputs/Cammy_Cam_Rotate_Counter_Clockwise.gif" width="256"/> 
+    <img src="workflows/_Example_Outputs/Cammy_Cam_Rotate_Clockwise.gif" width="256"/> <img src="workflows/_Example_Outputs/Cammy_Cam_Rotate_Counter_Clockwise.gif" width="256"/> 
   - Coordinate system:
     - Azimuth: In top view, from angle 0 rotate 360 degree with step -90 you get (0, -90, -180/180, 90, 0), in this case camera rotates clock-wise, vice versa.
     - Elevation: 0 when camera points horizontally forward, pointing down to the ground is negitive angle, vice versa.
