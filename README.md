@@ -24,13 +24,13 @@ This is an extensive node suite that enables ComfyUI to process 3D inputs (Mesh 
 
 Three options, in order of speed → reliability:
 
-1. **ComfyUI Manager** — search for `3D-Pack-env` in the Manager and install the highest version displayed. If that doesn't work, try nightly.
-2. **Manager via Git URL** — in ComfyUI Manager: "Install via Git URL" with `https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env.git`.
+1. **ComfyUI Manager** — search for `3D-Pack-enved` in the Manager and install the highest version displayed. If that doesn't work, try nightly.
+2. **Manager via Git URL** — in ComfyUI Manager: "Install via Git URL" with `https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-enved.git`.
 3. **Manual (most reliable)**:
    ```bash
    cd ComfyUI/custom_nodes
-   git clone https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env.git
-   cd ComfyUI-3D-Pack-env
+   git clone https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-enved.git
+   cd ComfyUI-3D-Pack-enved
    pip install -r requirements.txt --upgrade
    python install.py
    ```
@@ -43,8 +43,8 @@ CUDA wheels; nothing is installed into your ComfyUI environment.
 [`nodes/Checkpoints/`](nodes/Checkpoints) — don't overwrite the existing `.json` files.
 
 > **Please report any problems** you hit during installation — open a
-> [Discussion](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env/discussions) or
-> [Issue](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env/issues) on **this fork**,
+> [Discussion](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-enved/discussions) or
+> [Issue](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-enved/issues) on **this fork**,
 > not upstream, since packaging bugs here are not theirs. Very grateful for your help! 🙏
 
 ### Known gaps

@@ -1,18 +1,19 @@
 [project]
-name = "ComfyUI-3D-Pack-env"
-description = "ComfyUI-3D-Pack packaged with comfy-env: all 22 model families in one isolated environment, native CUDA extensions from prebuilt wheels, host ComfyUI environment left untouched."
-version = "0.1.6"
+name = "ComfyUI-3D-Pack-enved"
+description = "Warning, uses experimental package `comfy-env` to attempt a one click isolated install. Will download and use pixi package manager. A packaging fork of MrForExample/ComfyUI-3D-Pack (@9e8096e, 2025-11-17): 22 image-to-3D / multi-view / gaussian-splat model families -- TRELLIS, Hunyuan3D, InstantMesh, CRM, TripoSG, LGM, Unique3D, StableFast3D and more -- running in one isolated environment, with native CUDA extensions from prebuilt wheels instead of a compiler. Models and credit belong to the upstream authors; this fork changes packaging only."
+version = "0.0.1"
 license = { file = "LICENSE" }
-# dependencies stay dynamic from requirements.txt -- which now contains only
+authors = [{ name = "Andrea Pozzetti" }]
+# dependencies stay dynamic from requirements.txt -- which contains only
 # comfy-env. The real dependency set lives in nodes/comfy-env.toml.
 dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
 
 [project.urls]
-Repository = "https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-env"
+Repository = "https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-enved"
 
 [tool.comfy]
 PublisherId = "pznodes"
-DisplayName = "ComfyUI-3D-Pack-env"
+DisplayName = "3D-Pack-enved"
 Icon = ""
