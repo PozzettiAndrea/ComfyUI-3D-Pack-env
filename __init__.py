@@ -1,4 +1,4 @@
-"""ComfyUI-3D-Pack-env -- comfy-env packaging of ComfyUI-3D-Pack.
+"""ComfyUI-3D-Pack-enved -- comfy-env packaging of ComfyUI-3D-Pack.
 
 Runs in the HOST ComfyUI process, so it stays light: the only third-party
 import here is comfy_env itself. All model code lives in nodes/ and is

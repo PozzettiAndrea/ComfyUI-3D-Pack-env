@@ -1,4 +1,4 @@
-"""Node package for ComfyUI-3D-Pack-env -- imported INSIDE the isolated env.
+"""Node package for ComfyUI-3D-Pack-enved -- imported INSIDE the isolated env.
 
 The presence of `comfy-env.toml` next to this file is the isolation switch:
 comfy-env materialises one pixi env for this directory, runs a metadata scan

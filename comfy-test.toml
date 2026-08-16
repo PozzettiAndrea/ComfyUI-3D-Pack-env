@@ -1,4 +1,4 @@
-# comfy-test config for ComfyUI-3D-Pack-env.
+# comfy-test config for ComfyUI-3D-Pack-enved.
 #
 # Scope note: this pack vendors 22 model families whose weights are multi-GB
 # downloads, so `execution` is deliberately NOT in the default level set --
