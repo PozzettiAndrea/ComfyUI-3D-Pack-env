@@ -1,8 +1,8 @@
 import numpy as np
-import open3d as o3d
 import pymeshlab
 import torch
 import trimesh
+import xatlas
 from pymeshlab import PercentageValue
 
 
@@ -192,27 +192,12 @@ def process_mesh(
     ### Taubin Smoothing
     taubin_smooth(ms, stepsmoothnum=stepsmoothnum, verbose=verbose)
 
-    vertices, faces, _ = meshlab_to_mesh(ms)
-    if faces.shape[0] > targetfacenum:
-        device = o3d.core.Device("CPU:0")
-        dtype_f = o3d.core.float32
-        dtype_i = o3d.core.int64
-        mesh = o3d.t.geometry.TriangleMesh(device)
-        mesh.vertex.positions = o3d.core.Tensor(
-            vertices.astype(np.float32), dtype_f, device
-        )
-        mesh.triangle.indices = o3d.core.Tensor(faces.astype(np.int64), dtype_i, device)
-        simplified_mesh = mesh.simplify_quadric_decimation(
-            target_reduction=1.0 - float(targetfacenum) / faces.shape[0]
-        )
-        ms.clear()
-        vertices = simplified_mesh.vertex.positions.numpy()
-        faces = simplified_mesh.triangle.indices.numpy()
-        mesh = pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces)
-        ms.add_mesh(mesh)
-
     ### Mesh Simplification/Decimation
-    # decimate_quadric_edge_collapse(ms, targetfacenum=targetfacenum, verbose=verbose)
+    if ms.current_mesh().face_number() > targetfacenum:
+        decimate_quadric_edge_collapse(
+            ms, targetfacenum=targetfacenum, verbose=verbose
+        )
+
     taubin_smooth(ms, stepsmoothnum=stepsmoothnum, verbose=verbose)
     repair_non_manifold(ms, verbose=verbose)
     compute_normal(ms, verbose=verbose)
@@ -229,26 +214,34 @@ def uv_parameterize_uvatlas(
     parallel_partitions=16,
     nthreads=0,
 ):
-    device = o3d.core.Device("CPU:0")
-    dtype_f = o3d.core.float32
-    dtype_i = o3d.core.int64
+    # xatlas rather than open3d's UVAtlas: open3d ships no cp313 wheel and no
+    # sdist, so it pins the whole env to <=3.12. xatlas is already a dependency
+    # and is what the rest of the pack unwraps with. Different packer, so the
+    # island layout differs from UVAtlas -- the contract kept here is the one
+    # the caller relies on: per-face UVs, (#F, 3, 2), normalized to [0, 1].
+    # parallel_partitions/nthreads have no xatlas equivalent and are ignored.
+    atlas = xatlas.Atlas()
+    atlas.add_mesh(vertices.astype(np.float32), faces.astype(np.uint32))
 
-    mesh = o3d.t.geometry.TriangleMesh(device)
+    chart_options = xatlas.ChartOptions()
+    chart_options.max_cost = max_stretch
 
-    mesh.vertex.positions = o3d.core.Tensor(
-        vertices.astype(np.float32), dtype_f, device
-    )
-    mesh.triangle.indices = o3d.core.Tensor(faces.astype(np.int64), dtype_i, device)
+    pack_options = xatlas.PackOptions()
+    pack_options.resolution = int(size)
+    pack_options.padding = int(round(gutter))  # open3d's gutter, in texels
 
-    mesh.compute_uvatlas(
-        size=size,
-        gutter=gutter,
-        max_stretch=max_stretch,
-        parallel_partitions=parallel_partitions,
-        nthreads=nthreads,
-    )
+    atlas.generate(chart_options, pack_options)
+    _vmapping, indices, uvs = atlas[0]
 
-    return mesh.triangle.texture_uvs.numpy()  # (#F, 3, 2)
+    if indices.shape[0] != faces.shape[0]:
+        # The caller derives t_tex_idx as arange(#F * 3), so a face count that
+        # shifts under xatlas would silently misalign every UV.
+        raise RuntimeError(
+            f"xatlas returned {indices.shape[0]} faces for an input of "
+            f"{faces.shape[0]}; UV indices would not line up with the mesh."
+        )
+
+    return uvs[indices].astype(np.float32)  # (#F, 3, 2)
 
 
 ### Pack All ###

@@ -73,7 +73,9 @@ PyMCubes = "*"
 libigl = "*"
 pyvista = "*"
 igraph = "*"
-open3d = "*"
+# open3d deliberately absent: wheel-only, cp38-cp312, no sdist -- it pins the
+# whole env to <=3.12. Its one live use (MV_Adapter's UVAtlas parameterization)
+# now runs on xatlas above.
 
 # Neural rendering helpers that are NOT farm wheels.
 nerfacc = ">=0.5.3"       # LGM + Instant-NGP; JIT-compiles at first use
