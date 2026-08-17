@@ -15,7 +15,8 @@ from kornia.geometry.conversions import (
 from kiui.op import inverse_sigmoid
 
 from ...shared_utils.sh_utils import eval_sh, SH2RGB, RGB2SH
-from ...mesh_processer.mesh import Mesh, PointCloud
+from ...mesh_processer.mesh import Mesh
+from ...mesh_processer.types import PointCloud
 from ...mesh_processer.mesh_utils import construct_list_of_gs_attributes, write_gs_ply, read_gs_ply, K_nearest_neighbors_func
 
 def get_expon_lr_func(

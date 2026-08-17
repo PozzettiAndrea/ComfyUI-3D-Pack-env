@@ -37,6 +37,8 @@ from plyfile import PlyData
 import trimesh
 from PIL import Image
 
+from . import model_cache
+from .mesh_processer.interop import wire_in as _wire_in, wire_out as _wire_out
 from .mesh_processer.mesh import Mesh
 from .mesh_processer.mesh_utils import (
     ply_to_points_cloud, 
@@ -284,7 +286,7 @@ class Load_3D_Mesh:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -307,7 +309,7 @@ class Load_3D_Mesh:
                 cstr(f"[{self.__class__.__name__}] File name {filename} does not end with supported 3D file extensions: {SUPPORTED_3D_EXTENSIONS}").error.print()
         else:        
             cstr(f"[{self.__class__.__name__}] File {mesh_file_path} does not exist").error.print()
-        return (mesh, )
+        return (_wire_out(mesh), )
     
 class Load_3DGS:
 
@@ -350,7 +352,7 @@ class Save_3D_Mesh:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "save_path": ("STRING", {"default": 'Mesh_%Y-%m-%d-%M-%S-%f.glb', "multiline": False}),
             },
         }
@@ -366,6 +368,7 @@ class Save_3D_Mesh:
     CATEGORY = "Comfy3D/Import|Export"
     
     def save_mesh(self, mesh, save_path):
+        mesh = _wire_in(mesh)
         save_path = parse_save_filename(save_path, comfy_paths.output_directory, SUPPORTED_3D_EXTENSIONS, self.__class__.__name__)
         
         if save_path is not None:
@@ -609,7 +612,7 @@ class Fast_Clean_Mesh:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "apply_smooth": ("BOOLEAN", {"default": True},),
                 "smooth_step": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff}),
                 "apply_sub_divide": ("BOOLEAN", {"default": True},),
@@ -618,7 +621,7 @@ class Fast_Clean_Mesh:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -628,19 +631,20 @@ class Fast_Clean_Mesh:
 
     def clean_mesh(self, mesh, apply_smooth, smooth_step, apply_sub_divide, sub_divide_threshold):
 
+        mesh = _wire_in(mesh)
         meshes = simple_clean_mesh(to_pyml_mesh(mesh.v, mesh.f), apply_smooth=apply_smooth, stepsmoothnum=smooth_step, apply_sub_divide=apply_sub_divide, sub_divide_threshold=sub_divide_threshold).to(DEVICE)
         vertices, faces, _ = from_py3d_mesh(meshes)
 
         mesh = Mesh(v=vertices, f=faces, device=DEVICE)
 
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class Decimate_Mesh:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "target": ("INT", {"default": 5e4, "min": 0, "max": 0xffffffffffffffff}),
                 "remesh": ("BOOLEAN", {"default": True},),
                 "optimalplacement": ("BOOLEAN", {"default": True},),
@@ -648,7 +652,7 @@ class Decimate_Mesh:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -657,10 +661,11 @@ class Decimate_Mesh:
     CATEGORY = "Comfy3D/Preprocessor"
 
     def process_mesh(self, mesh, target, remesh, optimalplacement):
+        mesh = _wire_in(mesh)
         vertices, faces = decimate_mesh(mesh.v.detach().cpu().numpy(), mesh.f.detach().cpu().numpy(), target, remesh, optimalplacement)
         mesh.v, mesh.f = torch.from_numpy(vertices).to(DEVICE), torch.from_numpy(faces).to(torch.int64).to(DEVICE)
         mesh.auto_normal()
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class Switch_3DGS_Axis:
     @classmethod
@@ -698,7 +703,7 @@ class Switch_Mesh_Axis:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "axis_x_to": (["+x", "-x", "+y", "-y", "+z", "-z"],),
                 "axis_y_to": (["+y", "-y", "+z", "-z", "+x", "-x"],),
                 "axis_z_to": (["+z", "-z", "+x", "-x", "+y", "-y"],),
@@ -708,7 +713,7 @@ class Switch_Mesh_Axis:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "switched_mesh",
@@ -718,6 +723,7 @@ class Switch_Mesh_Axis:
     
     def switch_axis_and_scale(self, mesh, axis_x_to, axis_y_to, axis_z_to, flip_normal, scale):
         
+        mesh = _wire_in(mesh)
         switched_mesh = None
         
         if axis_x_to[1] != axis_y_to[1] and axis_x_to[1] != axis_z_to[1] and axis_y_to[1] != axis_z_to[1]:
@@ -726,7 +732,7 @@ class Switch_Mesh_Axis:
         else:
             cstr(f"[{self.__class__.__name__}] axis_x_to: {axis_x_to}, axis_y_to: {axis_y_to}, axis_z_to: {axis_z_to} have to be on separated axis").error.print()
         
-        return (switched_mesh, )
+        return (_wire_out(switched_mesh), )
     
 class Convert_3DGS_To_Pointcloud:
 
@@ -759,7 +765,7 @@ class Convert_Mesh_To_Pointcloud:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
             },
         }
 
@@ -774,6 +780,7 @@ class Convert_Mesh_To_Pointcloud:
     
     def convert_mesh(self, mesh):
         
+        mesh = _wire_in(mesh)
         points_cloud = mesh.convert_to_pointcloud()
         
         return (points_cloud, )
@@ -1002,7 +1009,7 @@ class Mesh_Orbit_Renderer:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "render_image_width": ("INT", {"default": 1024, "min": 128, "max": 8192}),
                 "render_image_height": ("INT", {"default": 1024, "min": 128, "max": 8192}),
                 "render_orbit_camera_poses": ("ORBIT_CAMPOSES",),    # [orbit radius, elevation, azimuth, orbit center X,  orbit center Y,  orbit center Z]
@@ -1052,6 +1059,7 @@ class Mesh_Orbit_Renderer:
         render_normal=False,
     ):
         
+        mesh = _wire_in(mesh)
         renderer = DiffRastRenderer(mesh, force_cuda_rasterize)
         
         optional_render_types = []
@@ -1190,7 +1198,7 @@ class Gaussian_Splatting_3D:
             "optional": {
                 "points_cloud_to_initialize_gaussian": ("POINTCLOUD",),
                 "ply_to_initialize_gaussian": ("GS_PLY",),
-                "mesh_to_initialize_gaussian": ("MESH",),
+                "mesh_to_initialize_gaussian": ("TRIMESH",),
             }
         }
 
@@ -1238,6 +1246,7 @@ class Gaussian_Splatting_3D:
         mesh_to_initialize_gaussian=None,
     ):
         
+        mesh_to_initialize_gaussian = _wire_in(mesh_to_initialize_gaussian)
         gs_ply = None
         
         ref_imgs_num = len(reference_images)
@@ -1314,7 +1323,7 @@ class Fitting_Mesh_With_Multiview_Images:
                 "reference_masks": ("MASK",),
                 "reference_orbit_camera_poses": ("ORBIT_CAMPOSES",),    # [orbit radius, elevation, azimuth, orbit center X,  orbit center Y,  orbit center Z]
                 "reference_orbit_camera_fovy": ("FLOAT", {"default": 49.1, "min": 0.0, "max": 180.0, "step": 0.1}),
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "mesh_albedo_width": ("INT", {"default": 1024, "min": 128, "max": 8192}),
                 "mesh_albedo_height": ("INT", {"default": 1024, "min": 128, "max": 8192}),
                 "training_iterations": ("INT", {"default": 1024, "min": 1, "max": 100000}),
@@ -1330,7 +1339,7 @@ class Fitting_Mesh_With_Multiview_Images:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
         "IMAGE",
     )
     RETURN_NAMES = (
@@ -1360,6 +1369,7 @@ class Fitting_Mesh_With_Multiview_Images:
         force_cuda_rasterize,
     ):
         
+        mesh = _wire_in(mesh)
         if mesh.vt is None:
             mesh.auto_uv()
             
@@ -1404,7 +1414,7 @@ class Fitting_Mesh_With_Multiview_Images:
         else:
             cstr(f"[{self.__class__.__name__}] Number of reference images {ref_imgs_num} does not equal to number of masks {ref_masks_num}").error.print()
         
-        return (trained_mesh, baked_texture, )
+        return (_wire_out(trained_mesh), baked_texture, )
 
 class Load_Triplane_Gaussian_Transformers:
     
@@ -1523,29 +1533,69 @@ class Load_Diffusers_Pipeline:
     CATEGORY = "Comfy3D/Import|Export"
     
     def load_diffusers_pipe(self, diffusers_pipeline_name, repo_id, custom_pipeline, force_download, checkpoint_sub_dir="", force_disable_xformers=False):
-        
-        # resume download pretrained checkpoint
+
+        # Download here (cheap when already present, and it keeps the loader
+        # node as the thing that reports network failures), but do NOT build
+        # the pipeline -- that happens in resolve_diffusers_pipe on first use.
         ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, repo_id)
         snapshot_download(repo_id=repo_id, local_dir=ckpt_download_dir, force_download=force_download, repo_type="model", ignore_patterns=HF_DOWNLOAD_IGNORE)
-        
-        diffusers_pipeline_class = DIFFUSERS_PIPE_DICT[diffusers_pipeline_name]
-        
-        # load diffusers pipeline
-        if not custom_pipeline:
-            custom_pipeline = None
-            
-        ckpt_path = ckpt_download_dir if not checkpoint_sub_dir else os.path.join(ckpt_download_dir, checkpoint_sub_dir)
-        pipe = diffusers_pipeline_class.from_pretrained(
-            ckpt_path,
-            torch_dtype=WEIGHT_DTYPE,
-            custom_pipeline=custom_pipeline,
-        ).to(DEVICE, WEIGHT_DTYPE)
-        
-        if hasattr(pipe, 'enable_xformers_memory_efficient_attention') and not force_disable_xformers:
+
+        return (model_cache.recipe(
+            "diffusers_pipe",
+            pipeline_name=diffusers_pipeline_name,
+            repo_id=repo_id,
+            custom_pipeline=custom_pipeline or None,
+            checkpoint_sub_dir=checkpoint_sub_dir,
+            force_disable_xformers=force_disable_xformers,
+        ), )
+
+
+def _build_diffusers_pipe(config):
+    """Materialize a DIFFUSERS_PIPE recipe. Called only on a cache miss."""
+    ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, config["repo_id"])
+    sub_dir = config.get("checkpoint_sub_dir")
+    ckpt_path = os.path.join(ckpt_download_dir, sub_dir) if sub_dir else ckpt_download_dir
+
+    diffusers_pipeline_class = DIFFUSERS_PIPE_DICT[config["pipeline_name"]]
+    pipe = diffusers_pipeline_class.from_pretrained(
+        ckpt_path,
+        torch_dtype=WEIGHT_DTYPE,
+        custom_pipeline=config.get("custom_pipeline"),
+    ).to(DEVICE, WEIGHT_DTYPE)
+
+    if hasattr(pipe, 'enable_xformers_memory_efficient_attention') and not config.get("force_disable_xformers"):
+        pipe.enable_xformers_memory_efficient_attention()
+
+    # Replay the mutator chain in the order the graph applied it.
+    for op in config.get("ops", []):
+        if op["op"] == "scheduler":
+            scheduler_class = DIFFUSERS_SCHEDULER_DICT[op["name"]]
+            pipe.scheduler = scheduler_class.from_config(
+                pipe.scheduler.config, timestep_spacing='trailing'
+            )
+        elif op["op"] == "state_dict":
+            checkpoints_dir_abs = os.path.join(CKPT_DIFFUSERS_PATH, op["repo_id"])
+            ckpt_path = resume_or_download_model_from_hf(
+                checkpoints_dir_abs, op["repo_id"], op["model_name"], "Set_Diffusers_Pipeline_State_Dict"
+            )
+            state_dict = torch.load(ckpt_path, map_location='cpu')
+            pipe.unet.load_state_dict(state_dict, strict=True)
             pipe.enable_xformers_memory_efficient_attention()
-        
-        return (pipe, )
-    
+            pipe = pipe.to(DEVICE)
+        else:
+            raise ValueError(f"unknown DIFFUSERS_PIPE op {op['op']!r}")
+
+    return pipe
+
+
+def resolve_diffusers_pipe(config):
+    """DIFFUSERS_PIPE recipe -> live pipeline, cached across runs.
+
+    Consumers call this on their pipe input before using it.
+    """
+    return model_cache.resolve("diffusers_pipe", config, _build_diffusers_pipe)
+
+
 class Set_Diffusers_Pipeline_Scheduler:
     @classmethod
     def INPUT_TYPES(cls):
@@ -1566,13 +1616,9 @@ class Set_Diffusers_Pipeline_Scheduler:
     CATEGORY = "Comfy3D/Import|Export"
 
     def set_pipe_scheduler(self, pipe, diffusers_scheduler_name):
-
-        diffusers_scheduler_class = DIFFUSERS_SCHEDULER_DICT[diffusers_scheduler_name]
-
-        pipe.scheduler = diffusers_scheduler_class.from_config(
-            pipe.scheduler.config, timestep_spacing='trailing'
-        )
-        return (pipe, )
+        # Appends to the recipe instead of mutating a live pipeline: the
+        # scheduler swap is applied in _build_diffusers_pipe at load time.
+        return (model_cache.with_op(pipe, "scheduler", name=diffusers_scheduler_name), )
 
 class Set_Diffusers_Pipeline_State_Dict:
 
@@ -1596,16 +1642,12 @@ class Set_Diffusers_Pipeline_State_Dict:
     CATEGORY = "Comfy3D/Import|Export"
 
     def set_pipe_state_dict(self, pipe, repo_id, model_name):
-
+        # Download now so a bad repo_id fails in this node rather than later
+        # inside the consumer; the weights are applied at load time.
         checkpoints_dir_abs = os.path.join(CKPT_DIFFUSERS_PATH, repo_id)
-        ckpt_path = resume_or_download_model_from_hf(checkpoints_dir_abs, repo_id, model_name, self.__class__.__name__)
+        resume_or_download_model_from_hf(checkpoints_dir_abs, repo_id, model_name, self.__class__.__name__)
 
-        state_dict = torch.load(ckpt_path, map_location='cpu')
-        pipe.unet.load_state_dict(state_dict, strict=True)
-        pipe.enable_xformers_memory_efficient_attention()
-        pipe = pipe.to(DEVICE)
-
-        return (pipe, )
+        return (model_cache.with_op(pipe, "state_dict", repo_id=repo_id, model_name=model_name), )
 
 class Wonder3D_MVDiffusion_Model:
     
@@ -1650,6 +1692,8 @@ class Wonder3D_MVDiffusion_Model:
         mv_guidance_scale, 
         num_inference_steps, 
     ):
+
+        mvdiffusion_pipe = resolve_diffusers_pipe(mvdiffusion_pipe)
 
         cfg = load_config_wonder3d(self.config_path_abs)
 
@@ -1883,7 +1927,7 @@ class Convert_3DGS_to_Mesh_with_NeRF_and_Marching_Cubes:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
         "IMAGE",
         "MASK",
     )
@@ -1923,7 +1967,7 @@ class Convert_3DGS_to_Mesh_with_NeRF_and_Marching_Cubes:
             )
             converter.fit_mesh_uv(training_albedo_iterations, training_albedo_resolution, texture_resolution)
         
-        return(converter.get_mesh(), imgs, alphas)
+        return(_wire_out(converter.get_mesh()), imgs, alphas)
     
 class Load_TripoSR_Model:
     checkpoints_dir = "TripoSR"
@@ -1986,7 +2030,7 @@ class TripoSR:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2011,7 +2055,7 @@ class TripoSR:
         meshes = tsr_model.extract_mesh(scene_codes, resolution=geometry_extract_resolution, threshold=marching_cude_threshold)
         mesh = Mesh.load_trimesh(given_mesh=meshes[0])
 
-        return (mesh,)
+        return (_wire_out(mesh),)
     
     # Default model are trained on images with this background 
     def fill_background(self, image):
@@ -2080,7 +2124,7 @@ class StableFast3D:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2101,7 +2145,7 @@ class StableFast3D:
             )
         mesh = Mesh.load_trimesh(given_mesh=trimesh_mesh[0])
 
-        return (mesh,)
+        return (_wire_out(mesh),)
     
     # Default model are trained on images with this background 
     def create_batch(self, input_image: Image):
@@ -2378,7 +2422,7 @@ class Convolutional_Reconstruction_Model:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2395,7 +2439,7 @@ class Convolutional_Reconstruction_Model:
         
         mesh = CRMSampler.generate3d(crm_model, np_imgs, np_xyzs, DEVICE)
         
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class Zero123Plus_Diffusion_Model:
     
@@ -2530,7 +2574,7 @@ class InstantMesh_Reconstruction_Model:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2568,7 +2612,7 @@ class InstantMesh_Reconstruction_Model:
         
         mesh = Mesh(v=vertices, f=faces, vt=uvs, ft=mesh_tex_idx, albedo=tex_map, device=DEVICE)
         mesh.auto_normal()
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class Era3D_MVDiffusion_Model:
     
@@ -2690,7 +2734,7 @@ class Instant_NGP:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2730,7 +2774,7 @@ class Instant_NGP:
             
             mesh.albedo = color_func_to_albedo(mesh, ngp.get_color, texture_resolution, device=DEVICE, force_cuda_rast=force_cuda_rast)
             
-        return (mesh, )
+        return (_wire_out(mesh), )
         
 class FlexiCubes_MVS:
     
@@ -2762,7 +2806,7 @@ class FlexiCubes_MVS:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2817,7 +2861,7 @@ class FlexiCubes_MVS:
             
             mesh = fc_trainer.get_mesh()
             
-            return (mesh, )
+            return (_wire_out(mesh), )
 
 class Load_Unique3D_Custom_UNet:
     default_repo_id = "MrForExample/Unique3D"
@@ -2953,7 +2997,7 @@ class Fast_Normal_Maps_To_Mesh:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -2967,7 +3011,7 @@ class Fast_Normal_Maps_To_Mesh:
         vertices, faces, _ = from_py3d_mesh(meshes)
 
         mesh = Mesh(v=vertices, f=faces, device=DEVICE)
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class ExplicitTarget_Mesh_Optimization:
 
@@ -2975,7 +3019,7 @@ class ExplicitTarget_Mesh_Optimization:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "normal_maps": ("IMAGE",),
                 "normal_masks": ("MASK",),
                 "reconstruction_steps": ("INT", {"default": 200, "min": 0, "max": 0xffffffffffffffff}),
@@ -2991,7 +3035,7 @@ class ExplicitTarget_Mesh_Optimization:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3014,6 +3058,7 @@ class ExplicitTarget_Mesh_Optimization:
     ):
         #TODO For now only support four orthographic view with elevation equals zero
         #azimuths, elevations, radius = normal_orbit_camera_poses[0], normal_orbit_camera_poses[1], normal_orbit_camera_poses[2]
+        mesh = _wire_in(mesh)
         pil_normal_list = torch_imgs_to_pils(normal_maps, normal_masks)
         normal_stg1 = [img.resize((coarse_reconstruct_resolution, coarse_reconstruct_resolution)) for img in pil_normal_list]
         with torch.inference_mode(False):
@@ -3026,14 +3071,14 @@ class ExplicitTarget_Mesh_Optimization:
 
             mesh = Mesh(v=vertices, f=faces, device=DEVICE)
 
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class ExplicitTarget_Color_Projection:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "reference_images": ("IMAGE",), 
                 "reference_masks": ("MASK",),
                 "projection_resolution": ("INT", {"default": 1024, "min": 128, "max": 8192}),
@@ -3050,7 +3095,7 @@ class ExplicitTarget_Color_Projection:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3072,6 +3117,7 @@ class ExplicitTarget_Color_Projection:
         texture_type,
         reference_orbit_camera_poses=None,
     ):
+        mesh = _wire_in(mesh)
         pil_image_list = torch_imgs_to_pils(reference_images, reference_masks)
 
         meshes = to_py3d_mesh(mesh.v, mesh.f)
@@ -3118,21 +3164,21 @@ class ExplicitTarget_Color_Projection:
             if mesh.vn is None:
                 mesh.auto_normal()
                 
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class Convert_Vertex_Color_To_Texture:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "texture_resolution": ("INT", {"default": 1024, "min": 128, "max": 8192}),
                 "batch_size": ("INT", {"default": 128, "min": 1, "max": 0xffffffffffffffff}),
             },
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3142,13 +3188,14 @@ class Convert_Vertex_Color_To_Texture:
     
     def run_convert_func(self, mesh, texture_resolution, batch_size):
         
+        mesh = _wire_in(mesh)
         if mesh.vc is not None:
             albedo_img, _ = interpolate_texture_map_attr(mesh, texture_resolution, batch_size, interpolate_color=True)
             mesh.albedo = troch_image_dilate(albedo_img)
         else:
             cstr(f"[{self.__class__.__name__}] skip this node since there is no vertex color found in mesh").msg.print()
         
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class Load_CharacterGen_MVDiffusion_Model:
     checkpoints_dir = "CharacterGen"
@@ -3294,7 +3341,7 @@ class CharacterGen_Reconstruction_Model:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3313,7 +3360,7 @@ class CharacterGen_Reconstruction_Model:
         mesh.auto_normal()
         mesh.auto_uv()
         
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class Load_Craftsman_Shape_Diffusion_Model:
     checkpoints_dir = "Craftsman"
@@ -3375,7 +3422,7 @@ class Craftsman_Shape_Diffusion_Model:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3413,7 +3460,7 @@ class Craftsman_Shape_Diffusion_Model:
         mesh.auto_normal()
         mesh.auto_uv()
         
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class OrbitPoses_JK:
     def __init__(self):
@@ -3910,7 +3957,7 @@ class Hunyuan3D_V1_Reconstruction_Model:
         }
 
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3934,7 +3981,7 @@ class Hunyuan3D_V1_Reconstruction_Model:
         mesh = Mesh(v=vertices, f=faces.to(torch.int64), vc=vtx_colors, device=DEVICE)
         mesh.auto_normal()
         
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 # deprecated
 class Hunyuan3D_V2_DiT_Flow_Matching_Model:
@@ -3954,7 +4001,7 @@ class Hunyuan3D_V2_DiT_Flow_Matching_Model:
         }
     
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -3990,7 +4037,7 @@ class Hunyuan3D_V2_DiT_Flow_Matching_Model:
 
         mesh = Mesh.load_trimesh(given_mesh=mesh)
 
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 # deprecated
 class Hunyuan3D_V2_Paint_Model:
@@ -4002,12 +4049,12 @@ class Hunyuan3D_V2_Paint_Model:
                 "hunyuan3d_v2_texgen_pipe": ("DIFFUSERS_PIPE",),
                 "reference_image": ("IMAGE",),
                 "reference_mask": ("MASK",),
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
             }
         }
     
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -4023,18 +4070,19 @@ class Hunyuan3D_V2_Paint_Model:
         reference_mask,  # [1, H, W]
         mesh,
     ):
+        mesh = _wire_in(mesh)
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
 
         v_np = mesh.v.detach().cpu().numpy()
         f_np = mesh.f.detach().cpu().numpy()
 
-        mesh = trimesh.Trimesh(vertices=v_np, faces=f_np)
+        mesh = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
         mesh = hunyuan3d_v2_texgen_pipe(mesh, single_image)
 
         mesh = Mesh.load_trimesh(given_mesh=mesh)
         mesh.auto_normal()
 
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class Load_Trellis_Structured_3D_Latents_Models:
     default_repo_id = "jetx/TRELLIS-image-large"
@@ -4082,7 +4130,7 @@ class Trellis_Structured_3D_Latents_Models:
         }
     
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -4132,7 +4180,7 @@ class Trellis_Structured_3D_Latents_Models:
         mesh = Mesh(v=vertices, f=faces, vt=uvs, ft=faces, albedo=texture, device=DEVICE)
         mesh.auto_normal()
 
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class TripoSG_I23D_Model:
     @classmethod
@@ -4152,7 +4200,7 @@ class TripoSG_I23D_Model:
         }
     
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -4192,7 +4240,7 @@ class TripoSG_I23D_Model:
             mesh = Mesh(v=vertices, f=faces, device=DEVICE)
             mesh.auto_normal()
 
-        return (mesh,)
+        return (_wire_out(mesh),)
     
 class TripoSG_Scribble_Model:
     @classmethod
@@ -4217,7 +4265,7 @@ class TripoSG_Scribble_Model:
         }
     
     RETURN_TYPES = (
-        "MESH",
+        "TRIMESH",
     )
     RETURN_NAMES = (
         "mesh",
@@ -4260,7 +4308,7 @@ class TripoSG_Scribble_Model:
         mesh = Mesh(v=vertices, f=faces.to(torch.int64), device=DEVICE)
         mesh.auto_normal()
 
-        return (mesh,)
+        return (_wire_out(mesh),)
 
 class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
     CATEGORY      = "Comfy3D/Algorithm"
@@ -4390,11 +4438,11 @@ class Load_Hunyuan3D_V2_TexGen_Pipeline:
 class Hunyuan3D_V2_Paint_Model_Turbo_MV:
     """
     Texture-painting pipeline using a list of PIL images.
-    If list contains 1 image → single-view; if >1 → multi-view mode.
+    If list contains 1 image -> single-view; if >1 -> multi-view mode.
     """
 
     CATEGORY = "Comfy3D/Algorithm"
-    RETURN_TYPES = ("MESH",)
+    RETURN_TYPES = ("TRIMESH",)
     RETURN_NAMES = ("mesh",)
     FUNCTION = "run"
 
@@ -4403,19 +4451,20 @@ class Hunyuan3D_V2_Paint_Model_Turbo_MV:
         return {
             "required": {
                 "hunyuan3d_v2_texgen_pipe": ("DIFFUSERS_PIPE",),
-                "mesh": ("MESH",),
+                "mesh": ("TRIMESH",),
                 "images": ("LIST",),
             }
         }
 
     @torch.no_grad()
     def run(self, hunyuan3d_v2_texgen_pipe, mesh, images):
+        mesh = _wire_in(mesh)
         if not isinstance(images, list) or len(images) == 0:
             raise Exception("[Hunyuan3D_V2_Paint_Model_Turbo_MV] 'images' must be a non-empty list of PIL images")
 
         v_np = mesh.v.detach().cpu().numpy()
         f_np = mesh.f.detach().cpu().numpy()
-        tri = trimesh.Trimesh(vertices=v_np, faces=f_np)
+        tri = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
 
         try:
             textured = hunyuan3d_v2_texgen_pipe(tri, images)
@@ -4424,7 +4473,7 @@ class Hunyuan3D_V2_Paint_Model_Turbo_MV:
 
         m_out = Mesh.load_trimesh(given_mesh=textured)
         m_out.auto_normal()
-        return (m_out,)
+        return (_wire_out(m_out),)
 
 class Multi_Background_Remover:
     """
@@ -4489,11 +4538,11 @@ class Multi_Background_Remover:
 class Hunyuan3D_V2_ShapeGen_MV:
     """
     Shape generation pipeline using a list of processed PIL images.
-    If len(images) == 1 → single-view; if >1 → multi-view dict.
+    If len(images) == 1 -> single-view; if >1 -> multi-view dict.
     """
 
     CATEGORY = "Comfy3D/Algorithm"
-    RETURN_TYPES = ("MESH",)
+    RETURN_TYPES = ("TRIMESH",)
     RETURN_NAMES = ("mesh",)
     FUNCTION = "run"
 
@@ -4547,7 +4596,7 @@ class Hunyuan3D_V2_ShapeGen_MV:
         for fn in (FloaterRemover(), DegenerateFaceRemover(), FaceReducer()):
             mesh = fn(mesh)
 
-        return (Mesh.load_trimesh(given_mesh=mesh),)
+        return (_wire_out(Mesh.load_trimesh(given_mesh=mesh)),)
 
 #--------------------------------
 class Load_StableGen_Trellis_Pipeline:
@@ -4647,7 +4696,7 @@ class StableGen_Trellis_Image_To_3D:
     """
 
     CATEGORY = "Comfy3D/Algorithm"
-    RETURN_TYPES = ("MESH",)
+    RETURN_TYPES = ("TRIMESH",)
     RETURN_NAMES = ("mesh",)
     FUNCTION = "run"
 
@@ -4729,7 +4778,7 @@ class StableGen_Trellis_Image_To_3D:
             transformation_matrix = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
             vertices = vertices @ transformation_matrix
             
-            tri_mesh = trimesh.Trimesh(vertices, faces)
+            tri_mesh = trimesh.Trimesh(vertices, faces, process=False)
             
             if mesh_simplify < 1.0:
                 try:
@@ -4741,7 +4790,7 @@ class StableGen_Trellis_Image_To_3D:
             mesh = Mesh.load_trimesh(given_mesh=tri_mesh)
             mesh.auto_normal()
             
-            return (mesh,)
+            return (_wire_out(mesh),)
             
         except Exception as e:
             raise Exception(f"[StableGen_Trellis_Image_To_3D] 3D generation failed: {str(e)}")
@@ -4831,7 +4880,7 @@ class Load_MVAdapter_IG2MV_Pipeline:
         vae_model = None if vae_model == "None" else vae_model
         lora_model = None if not lora_model else lora_model
         
-        # Подготавливаем параметры для пайплайна
+        # prepare the parameters for the pipeline
         pipeline_kwargs = {
             "base_model": base_model,
             "vae_model": vae_model,
@@ -5378,7 +5427,7 @@ class Hunyuan3D_21_ShapeGen:
     """Hunyuan3D-2.1 Shape Generation with automatic pipeline cleanup"""
     
     CATEGORY = "Comfy3D/Algorithm/Hunyuan3D-2.1"
-    RETURN_TYPES = ("MESH", "IMAGE")
+    RETURN_TYPES = ("TRIMESH", "IMAGE")
     RETURN_NAMES = ("mesh", "processed_image")
     FUNCTION = "generate"
 
@@ -5447,13 +5496,13 @@ class Hunyuan3D_21_ShapeGen:
         
         processed_image_tensor = pils_to_torch_imgs([pil_image])
         
-        return (mesh_out, processed_image_tensor)
+        return (_wire_out(mesh_out), processed_image_tensor)
 
 class Hunyuan3D_21_TexGen:
     """Hunyuan3D-2.1 Texture Generation"""
     
     CATEGORY = "Comfy3D/Algorithm/Hunyuan3D-2.1"
-    RETURN_TYPES = ("MESH",)
+    RETURN_TYPES = ("TRIMESH",)
     RETURN_NAMES = ("textured_mesh",)
     FUNCTION = "generate"
 
@@ -5553,7 +5602,7 @@ class Hunyuan3D_21_TexGen:
                 else:
                     print("Loaded regular textured mesh")
             
-            return (mesh_out,)
+            return (_wire_out(mesh_out),)
             
         finally:
             # Clean up files

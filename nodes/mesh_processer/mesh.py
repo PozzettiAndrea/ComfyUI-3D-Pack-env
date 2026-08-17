@@ -8,6 +8,7 @@ import numpy as np
 from kiui.op import safe_normalize, dot
 from kiui.typing import *
 
+from .types import PointCloud  # re-export: importers predate types.py
 from ..shared_utils.sh_utils import SH2RGB
 from ..shared_utils.image_utils import prepare_torch_img
 
@@ -625,7 +626,7 @@ class Mesh:
         v_np = self.v.detach().cpu().numpy()
         f_np = self.f.detach().cpu().numpy()
 
-        _mesh = trimesh.Trimesh(vertices=v_np, faces=f_np)
+        _mesh = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
         _mesh.export(path)
 
 
@@ -900,7 +901,3 @@ class Mesh:
         return pcd
         
         
-class PointCloud(NamedTuple):
-    points: np.array
-    colors: np.array
-    normals: np.array
