@@ -23,6 +23,46 @@ from .utils import (
 )
 
 
+# transformers 5.x renamed ViT's internals: `encoder.layer.N.` -> `layers.N.`,
+# `attention.attention.query` -> `attention.q_proj`, `intermediate.dense` ->
+# `mlp.fc1`, and so on. TripoSR's checkpoint predates that rename.
+#
+# transformers ships the mapping itself (conversion_mapping.py, "ViTModel"), but
+# only applies it inside `from_pretrained`. DINOSingleImageTokenizer constructs
+# `ViTModel(config)` directly (models/tokenizers/image.py) and the weights arrive
+# through TSR's own `load_state_dict`, so that path never runs and 192 of the 200
+# image_tokenizer keys fail to match.
+#
+# Keyed on what the *constructed* model asks for rather than on a version check,
+# so this is a no-op on transformers 4.x where the checkpoint already matches.
+_VIT_PREFIX = "image_tokenizer.model."
+_VIT_RENAMES = [
+    (".attention.attention.query", ".attention.q_proj"),
+    (".attention.attention.key", ".attention.k_proj"),
+    (".attention.attention.value", ".attention.v_proj"),
+    (".attention.output.dense", ".attention.o_proj"),
+    (".intermediate.dense", ".mlp.fc1"),
+    # Must follow the attention rule above: by the time this runs, the attention
+    # variant has already become `.attention.o_proj` and cannot be swallowed here.
+    (".output.dense", ".mlp.fc2"),
+    (".encoder.layer.", ".layers."),
+]
+
+
+def _remap_vit_keys(state_dict, model):
+    """Rename pre-5.x HF ViT weights to whatever this transformers expects."""
+    if not any(".attention.q_proj" in k for k in model.state_dict()):
+        return state_dict  # transformers 4.x -- checkpoint layout already matches
+
+    remapped = {}
+    for key, value in state_dict.items():
+        if key.startswith(_VIT_PREFIX):
+            for old, new in _VIT_RENAMES:
+                key = key.replace(old, new)
+        remapped[key] = value
+    return remapped
+
+
 class TSR(BaseModule):
     @dataclass
     class Config(BaseModule.Config):
@@ -47,7 +87,7 @@ class TSR(BaseModule):
         renderer: dict
 
     cfg: Config
-    
+
     @classmethod
     def from_pretrained(
             cls, weight_path: str, config_path: str
@@ -56,7 +96,7 @@ class TSR(BaseModule):
         OmegaConf.resolve(cfg)
         model = cls(cfg)
         ckpt = torch.load(weight_path, map_location="cpu")
-        model.load_state_dict(ckpt)
+        model.load_state_dict(_remap_vit_keys(ckpt, model))
         return model
 
     def configure(self):

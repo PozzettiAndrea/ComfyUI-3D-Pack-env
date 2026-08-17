@@ -4,7 +4,17 @@ import torch
 import torch.nn as nn
 from mcubes import marching_cubes
 
-from ....mesh_processer.mesh_utils import switch_vector_axis
+
+def _switch_vector_axis(vector3s, target_axis):
+    """Permute the columns of an (N, 3) array in place.
+
+    Inlined from mesh_processer.mesh_utils rather than imported: that module
+    pulls a mesh-processing stack (pymeshlab, plyfile, cv2, trimesh, kiui) in
+    behind a two-line body, and the `....` import made this family
+    un-importable outside the full `nodes` package.
+    """
+    vector3s[:, [0, 1, 2]] = vector3s[:, target_axis]
+    return vector3s
 
 
 class IsosurfaceHelper(nn.Module):
@@ -44,7 +54,7 @@ class MarchingCubeHelper(IsosurfaceHelper):
     ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
         level = -level.view(self.resolution, self.resolution, self.resolution)
         v_pos, t_pos_idx = self.mc_func(level.detach().cpu().numpy(), 0.0)
-        v_pos = switch_vector_axis(v_pos, (2, 1, 0))
+        v_pos = _switch_vector_axis(v_pos, (2, 1, 0))
         v_pos = v_pos[..., [2, 1, 0]]
         v_pos = v_pos / (self.resolution - 1.0)
         return v_pos, t_pos_idx

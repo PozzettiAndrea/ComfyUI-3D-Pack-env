@@ -13,7 +13,8 @@ import torch.nn.functional as F
 import trimesh
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
-from ..._vendor_paths import import_module as _vendor_import
+import importlib
+
 
 def parse_structured(fields: Any, cfg: Optional[Union[dict, DictConfig]] = None) -> Any:
     scfg = OmegaConf.merge(OmegaConf.structured(fields), cfg)
@@ -21,11 +22,30 @@ def parse_structured(fields: Any, cfg: Optional[Union[dict, DictConfig]] = None)
 
 
 def find_class(cls_string):
-    module_string = ".".join(cls_string.split(".")[:-1])
-    cls_name = cls_string.split(".")[-1]
-    module = _vendor_import(module_string)
-    cls = getattr(module, cls_name)
-    return cls
+    """Resolve a dotted "module.path.ClassName" string from the config.
+
+    Config files name classes by the legacy top-level root, e.g.
+    "TripoSR.models.transformer.transformer_1d.Transformer1D". This package IS
+    that root, so the root segment is stripped and the rest imported relative to
+    __package__. Resolving locally rather than through the pack-wide alias table
+    in nodes/_vendor_paths.py keeps this family self-contained -- it imports the
+    same whether it is loaded as part of the pack or on its own.
+
+    Anything not rooted at this package is imported as a normal absolute path,
+    so a config can still point at an external class.
+    """
+    module_string, _, cls_name = cls_string.rpartition(".")
+    root = (__package__ or "").rsplit(".", 1)[-1]
+
+    if root and module_string == root:
+        module = importlib.import_module(__package__)
+    elif root and module_string.startswith(root + "."):
+        module = importlib.import_module(
+            "." + module_string[len(root) + 1:], __package__
+        )
+    else:
+        module = importlib.import_module(module_string)
+    return getattr(module, cls_name)
 
 
 def get_intrinsic_from_fov(fov, H, W, bs=-1):

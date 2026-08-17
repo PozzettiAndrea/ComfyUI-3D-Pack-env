@@ -1,13 +1,13 @@
 import torch
 import numpy as np
-from kornia.geometry.conversions import (
-    quaternion_to_axis_angle,
-    axis_angle_to_quaternion,
-)
-import pymeshlab as pml
-from plyfile import PlyData, PlyElement
 
 from typing import Optional
+
+# pymeshlab / plyfile / nvdiffrast are imported lazily inside the handful of
+# functions that need them. 13 of the 19 functions here are pure torch/numpy,
+# and this module is imported by families that only want one of those -- paying
+# for a mesh-processing stack to call switch_vector_axis is not a good trade.
+# (kornia used to be imported here too, for two names that were never used.)
 
 pytorch3d_capable = True
 try:
@@ -239,6 +239,8 @@ def decimate_mesh(
         solver.simplify_mesh(target_count=target, preserve_border=False, verbose=False)
         verts, faces, normals = solver.getMesh()
     else:
+        import pymeshlab as pml
+
         m = pml.Mesh(verts, faces)
         ms = pml.MeshSet()
         ms.add_mesh(m, "mesh")  # will copy!
@@ -281,6 +283,8 @@ def clean_mesh(
 ):
     # verts: [N, 3]
     # faces: [N, 3]
+
+    import pymeshlab as pml
 
     _ori_vert_shape = verts.shape
     _ori_face_shape = faces.shape
@@ -350,6 +354,8 @@ def calculate_max_sh_degree_from_gs_ply(plydata):
     return max_sh_degree, extra_f_names
 
 def write_gs_ply(xyz, normals, f_dc, f_rest, opacities, scale, rotation, list_of_attributes):
+    from plyfile import PlyData, PlyElement
+
     dtype_full = [(attribute, 'f4') for attribute in list_of_attributes]
 
     elements = np.empty(xyz.shape[0], dtype=dtype_full)
