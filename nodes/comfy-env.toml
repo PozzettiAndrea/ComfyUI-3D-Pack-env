@@ -1,49 +1,19 @@
-# ONE isolated environment for all of ComfyUI-3D-Pack's model families.
-#
-# Why this file exists: upstream's install.py pip-installs torch, torchvision,
-# torchaudio and xformers straight into the ComfyUI host environment, and ships
-# prebuilt native wheels for exactly ONE combination (windows / py3.12 /
-# torch 2.5.1 / cu124) -- anything else falls back to compiling from source with
-# Visual Studio Build Tools. Both problems disappear here: the whole stack lives
-# in its own pixi env, and every native extension comes from the cuda-wheels
-# farm, which publishes across CUDA 12.4-13.0 x torch 2.4-2.11 x py3.10-3.14.
-#
-# One env (not one per family) is deliberate. The "mutually unsatisfiable" pins
-# in the vendored per-model requirements.txt files are not real: upstream's own
-# working environment runs transformers 4.46.2 / diffusers 0.31.0 / numpy 1.26.4
-# / pytorch-lightning 2.4.0, violating every pin Hunyuan3D_2_1 and Hunyuan3D_V2
-# declare, and works. Those files are pip-freezes of the authors' dev boxes.
-#
-# The one genuine collision is Hunyuan3D_V2 and Hunyuan3D_2_1 each building a
-# CUDA extension named `custom_rasterizer_kernel`; two different modules cannot
-# share one name in a single site-packages. Neither is installed here (see the
-# [cuda] notes below), so nothing collides today. If HY texture generation is
-# wanted, build ONE of them -- 2.1 supersedes 2.0.
-
 [cuda]
 packages = [
-  "nvdiffrast",     # 11 model families + 3 MV algorithms -- widest native dep
-  "pytorch3d",      # Unique3D, TriplaneGaussian, Hunyuan3D_V1, PartCrafter
-  "torch_scatter",  # Unique3D, TriplaneGaussian, FlexiCubes
-  "torch_cluster",  # craftsman, TripoSG, PartCrafter, Hunyuan3D_2_1
-  "spconv",         # TRELLIS + Stable3DGen sparse backend
-  "cumm",           # spconv's runtime companion
-  "flash_attn",     # TRELLIS / Stable3DGen / Hunyuan3D_V1 attention
-  "sageattention",  # Hunyuan3D 2.x attention
-
-  # --- Configured in the farm but NEVER BUILT. Build, then uncomment: ---
-  #   gh workflow run build.yml -f package=diff_gaussian_rasterization
-  #   gh workflow run build.yml -f package=simple_knn
-  # (pin their floating `main` source_tag first). Needed by GaussianSplatting,
-  # LGM, TriplaneGaussian and TRELLIS' gaussian renderer.
-  # "diff_gaussian_rasterization",
-  # "simple_knn",
-
-  # --- No farm recipe yet; none exist as prebuilt wheels anywhere on PyPI: ---
-  #   diso           Hunyuan3D 2.1/V2 + TripoSG surface extraction (highest value)
-  #   pointnet2_ops  TriplaneGaussian only
-  #   vox2seq        TRELLIS "serialized" sparse attention (optional backend)
-  #   custom_rasterizer  Hunyuan3D texture gen (see the collision note above)
+  "nvdiffrast",
+  "pytorch3d",
+  "torch_scatter",
+  "torch_cluster",
+  "spconv",
+  "cumm",
+  "flash_attn",
+  "sageattention",
+  "diff_gaussian_rasterization",
+  "simple_knn",
+  "diso",
+  "pointnet2_ops",
+  "vox2seq",
+  "custom_rasterizer_hy3d2"
 ]
 
 [dependencies]
