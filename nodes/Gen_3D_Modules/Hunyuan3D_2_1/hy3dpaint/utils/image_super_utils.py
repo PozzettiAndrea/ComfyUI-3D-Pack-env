@@ -12,30 +12,27 @@
 # fine-tuning enabling code and other elements of the foregoing made publicly available
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
-import numpy as np
-from PIL import Image
-
-
 class imageSuperNet:
-    def __init__(self, config) -> None:
-        from realesrgan import RealESRGANer
-        from basicsr.archs.rrdbnet_arch import RRDBNet
+    """Pass-through. Was a 4x Real-ESRGAN enhance pass over the multiview
+    albedo/mr maps.
 
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-        upsampler = RealESRGANer(
-            scale=4,
-            model_path=config.realesrgan_ckpt_path,
-            dni_weight=None,
-            model=model,
-            tile=0,
-            tile_pad=10,
-            pre_pad=0,
-            half=True,
-            gpu_id=None,
-        )
-        self.upsampler = upsampler
+    Dropped because realesrgan pulls in basicsr 1.4.2, whose setup.py reads its
+    version via `exec()` + `locals()` -- which PEP 667 broke in Python 3.13, so
+    it cannot build at all. basicsr's last release was 2022 and the
+    `basicsr-fixed` fork carries the identical bug.
+
+    Little is lost: textureGenPipeline resized the 4x output straight back down
+    to render_size before baking, so this only ever acted as a sharpening pass,
+    never as added resolution. Upstream reached the same conclusion for the
+    newer pipeline -- the equivalent calls in Hunyuan3D_V2's texgen/pipelines.py
+    (lines 94 and 215) are commented out.
+
+    Kept as a class rather than deleted so textureGenPipeline's construction
+    (line 91) and call sites (lines 164-165) stay untouched.
+    """
+
+    def __init__(self, config) -> None:
+        pass
 
     def __call__(self, image):
-        output, _ = self.upsampler.enhance(np.array(image))
-        output = Image.fromarray(output)
-        return output
+        return image

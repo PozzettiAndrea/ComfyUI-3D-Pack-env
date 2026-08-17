@@ -58,7 +58,10 @@ imageio = "*"
 imageio-ffmpeg = "*"
 rembg = "*"
 onnxruntime = "*"
-realesrgan = "*"          # Hunyuan3D 2.1 upscaling; needs the torchvision_fix shim
+# realesrgan deliberately absent: it pulls basicsr 1.4.2, whose setup.py reads
+# its version through exec() + locals() -- broken by PEP 667 on Python 3.13, so
+# it cannot build. Its only use (Hunyuan3D 2.1 multiview upscaling) is now a
+# pass-through in hy3dpaint/utils/image_super_utils.py.
 
 # Mesh / geometry.
 trimesh = "*"
