@@ -10,6 +10,13 @@ import open_clip
 from PIL import Image
 from ...util import default, count_params
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class AbstractEncoder(nn.Module):
     def __init__(self):
@@ -28,7 +35,7 @@ class ClassEmbedder(nn.Module):
     def __init__(self, embed_dim, n_classes=1000, key="class", ucg_rate=0.1):
         super().__init__()
         self.key = key
-        self.embedding = nn.Embedding(n_classes, embed_dim)
+        self.embedding = ops.Embedding(n_classes, embed_dim)
         self.n_classes = n_classes
         self.ucg_rate = ucg_rate
 

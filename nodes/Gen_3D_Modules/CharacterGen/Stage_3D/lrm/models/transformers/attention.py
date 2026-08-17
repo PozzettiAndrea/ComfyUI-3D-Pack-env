@@ -23,6 +23,13 @@ from diffusers.models.embeddings import CombinedTimestepLabelEmbeddings
 
 from ...utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class MemoryEfficientAttentionMixin:
     def enable_xformers_memory_efficient_attention(
@@ -102,13 +109,13 @@ class GatedSelfAttentionDense(nn.Module):
         super().__init__()
 
         # we need a linear projection since we need cat visual feature and obj feature
-        self.linear = nn.Linear(context_dim, query_dim)
+        self.linear = ops.Linear(context_dim, query_dim)
 
         self.attn = Attention(query_dim=query_dim, heads=n_heads, dim_head=d_head)
         self.ff = FeedForward(query_dim, activation_fn="geglu")
 
-        self.norm1 = nn.LayerNorm(query_dim)
-        self.norm2 = nn.LayerNorm(query_dim)
+        self.norm1 = ops.LayerNorm(query_dim)
+        self.norm2 = ops.LayerNorm(query_dim)
 
         self.register_parameter("alpha_attn", nn.Parameter(torch.tensor(0.0)))
         self.register_parameter("alpha_dense", nn.Parameter(torch.tensor(0.0)))
@@ -218,7 +225,7 @@ class BasicTransformerBlock(nn.Module, MemoryEfficientAttentionMixin):
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
         else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm1 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -239,7 +246,7 @@ class BasicTransformerBlock(nn.Module, MemoryEfficientAttentionMixin):
             elif self.use_ada_layer_norm_continuous:
                 self.norm2 = AdaLayerNormContinuous(dim, cond_dim_ada_norm_continuous)
             else:
-                self.norm2 = nn.LayerNorm(
+                self.norm2 = ops.LayerNorm(
                     dim, elementwise_affine=norm_elementwise_affine
                 )
 
@@ -262,7 +269,7 @@ class BasicTransformerBlock(nn.Module, MemoryEfficientAttentionMixin):
         if self.use_ada_layer_norm_continuous:
             self.norm3 = AdaLayerNormContinuous(dim, cond_dim_ada_norm_continuous)
         else:
-            self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm3 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.ff = FeedForward(
             dim,
             dropout=dropout,
@@ -460,7 +467,7 @@ class GELU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
+        self.proj = ops.Linear(dim_in, dim_out)
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
@@ -516,7 +523,7 @@ class ApproximateGELU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
+        self.proj = ops.Linear(dim_in, dim_out)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
@@ -534,10 +541,10 @@ class AdaLayerNorm(nn.Module):
 
     def __init__(self, embedding_dim: int, num_embeddings: int):
         super().__init__()
-        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.emb = ops.Embedding(num_embeddings, embedding_dim)
         self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, embedding_dim * 2)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
+        self.linear = ops.Linear(embedding_dim, embedding_dim * 2)
+        self.norm = ops.LayerNorm(embedding_dim, elementwise_affine=False)
 
     def forward(self, x: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
         emb = self.linear(self.silu(self.emb(timestep)))
@@ -557,9 +564,9 @@ class AdaLayerNormContinuous(nn.Module):
     def __init__(self, embedding_dim: int, condition_dim: int):
         super().__init__()
         self.silu = nn.SiLU()
-        self.linear1 = nn.Linear(condition_dim, condition_dim)
-        self.linear2 = nn.Linear(condition_dim, embedding_dim * 2)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
+        self.linear1 = ops.Linear(condition_dim, condition_dim)
+        self.linear2 = ops.Linear(condition_dim, embedding_dim * 2)
+        self.norm = ops.LayerNorm(embedding_dim, elementwise_affine=False)
 
     def forward(self, x: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
         emb = self.linear2(self.silu(self.linear1(condition)))
@@ -575,9 +582,9 @@ class Modulation(nn.Module):
         if single_layer:
             self.linear1 = nn.Identity()
         else:
-            self.linear1 = nn.Linear(condition_dim, condition_dim)
+            self.linear1 = ops.Linear(condition_dim, condition_dim)
 
-        self.linear2 = nn.Linear(condition_dim, embedding_dim * 2)
+        self.linear2 = ops.Linear(condition_dim, embedding_dim * 2)
 
         # Only zero init the last linear layer
         if zero_init:
@@ -606,8 +613,8 @@ class AdaLayerNormZero(nn.Module):
         self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
 
         self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        self.linear = ops.Linear(embedding_dim, 6 * embedding_dim, bias=True)
+        self.norm = ops.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
 
     def forward(
         self,
@@ -655,7 +662,7 @@ class AdaGroupNorm(nn.Module):
         else:
             self.act = get_activation(act_fn)
 
-        self.linear = nn.Linear(embedding_dim, out_dim * 2)
+        self.linear = ops.Linear(embedding_dim, out_dim * 2)
 
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         if self.act:

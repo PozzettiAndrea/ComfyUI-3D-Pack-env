@@ -25,6 +25,13 @@ from .unet_blocks import (
 )
 from .resnet import InflatedConv3d
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -96,7 +103,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
-            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+            self.class_embedding = ops.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
         elif class_embed_type == "identity":
@@ -115,9 +122,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         # init_linear(self.camera_embedding_2, 0.25)
 
         self.camera_embedding = nn.Sequential(
-            nn.Linear(camera_input_dim, time_embed_dim),
+            ops.Linear(camera_input_dim, time_embed_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
+            ops.Linear(time_embed_dim, time_embed_dim),
         )
 
         self.down_blocks = nn.ModuleList([])
@@ -224,7 +231,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
+        self.conv_norm_out = ops.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = InflatedConv3d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 

@@ -8,6 +8,13 @@ from functools import partial
 
 from .attention import MemEffAttention
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class MVAttention(nn.Module):
     def __init__(
         self, 
@@ -29,7 +36,7 @@ class MVAttention(nn.Module):
         self.skip_scale = skip_scale
         self.num_frames = num_frames
 
-        self.norm = nn.GroupNorm(num_groups=groups, num_channels=dim, eps=eps, affine=True)
+        self.norm = ops.GroupNorm(num_groups=groups, num_channels=dim, eps=eps, affine=True)
         self.attn = MemEffAttention(dim, num_heads, qkv_bias, proj_bias, attn_drop, proj_drop)
 
     def forward(self, x):
@@ -64,11 +71,11 @@ class ResnetBlock(nn.Module):
         self.out_channels = out_channels
         self.skip_scale = skip_scale
 
-        self.norm1 = nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.norm1 = ops.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
+        self.conv1 = ops.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        self.norm2 = nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.norm2 = ops.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
+        self.conv2 = ops.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         self.act = F.silu
 
@@ -80,7 +87,7 @@ class ResnetBlock(nn.Module):
         
         self.shortcut = nn.Identity()
         if self.in_channels != self.out_channels:
-            self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=True)
+            self.shortcut = ops.Conv2d(in_channels, out_channels, kernel_size=1, bias=True)
 
     
     def forward(self, x):
@@ -129,7 +136,7 @@ class DownBlock(nn.Module):
 
         self.downsample = None
         if downsample:
-            self.downsample = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=2, padding=1)
+            self.downsample = ops.Conv2d(out_channels, out_channels, kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):
         xs = []
@@ -211,7 +218,7 @@ class UpBlock(nn.Module):
 
         self.upsample = None
         if upsample:
-            self.upsample = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+            self.upsample = ops.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x, xs):
 
@@ -247,7 +254,7 @@ class UNet(nn.Module):
         super().__init__()
 
         # first
-        self.conv_in = nn.Conv2d(in_channels, down_channels[0], kernel_size=3, stride=1, padding=1)
+        self.conv_in = ops.Conv2d(in_channels, down_channels[0], kernel_size=3, stride=1, padding=1)
 
         # down
         down_blocks = []
@@ -286,8 +293,8 @@ class UNet(nn.Module):
         self.up_blocks = nn.ModuleList(up_blocks)
 
         # last
-        self.norm_out = nn.GroupNorm(num_channels=up_channels[-1], num_groups=32, eps=1e-5)
-        self.conv_out = nn.Conv2d(up_channels[-1], out_channels, kernel_size=3, stride=1, padding=1)
+        self.norm_out = ops.GroupNorm(num_channels=up_channels[-1], num_groups=32, eps=1e-5)
+        self.conv_out = ops.Conv2d(up_channels[-1], out_channels, kernel_size=3, stride=1, padding=1)
 
 
     def forward(self, x):

@@ -9,6 +9,13 @@ from ..utils.base import BaseModule
 from ..utils.ops import get_activation
 from ..utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class PointOutLayer(BaseModule):
     @dataclass
     class Config(BaseModule.Config):
@@ -17,7 +24,7 @@ class PointOutLayer(BaseModule):
     cfg: Config
     def configure(self) -> None:
         super().configure()
-        self.point_layer = nn.Linear(self.cfg.in_channels, self.cfg.out_channels)
+        self.point_layer = ops.Linear(self.cfg.in_channels, self.cfg.out_channels)
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -37,7 +44,7 @@ class TriplaneUpsampleNetwork(BaseModule):
 
     def configure(self) -> None:
         super().configure()
-        self.upsample = nn.ConvTranspose2d(
+        self.upsample = ops.ConvTranspose2d(
             self.cfg.in_channels, self.cfg.out_channels, kernel_size=2, stride=2
         )
 
@@ -93,7 +100,7 @@ class MLP(nn.Module):
         return x
 
     def make_linear(self, dim_in, dim_out, is_first, is_last, bias=True):
-        layer = nn.Linear(dim_in, dim_out, bias=bias)
+        layer = ops.Linear(dim_in, dim_out, bias=bias)
         return layer
 
     def make_activation(self, activation):
@@ -117,7 +124,7 @@ class GSProjection(nn.Module):
 
         self.out_layers = nn.ModuleList()
         for key, ch in zip(self.out_keys, self.out_channels):
-            layer = nn.Linear(in_channels, ch)
+            layer = ops.Linear(in_channels, ch)
             # initialize
             nn.init.constant_(layer.weight, 0)
             nn.init.constant_(layer.bias, 0)
@@ -181,14 +188,14 @@ class ResnetBlockFC(nn.Module):
         self.size_h = size_h
         self.size_out = size_out
         # Submodules
-        self.fc_0 = nn.Linear(size_in, size_h)
-        self.fc_1 = nn.Linear(size_h, size_out)
+        self.fc_0 = ops.Linear(size_in, size_h)
+        self.fc_1 = ops.Linear(size_h, size_out)
         self.actvn = nn.ReLU()
 
         if size_in == size_out:
             self.shortcut = None
         else:
-            self.shortcut = nn.Linear(size_in, size_out, bias=False)
+            self.shortcut = ops.Linear(size_in, size_out, bias=False)
         # Initialization
         nn.init.zeros_(self.fc_1.weight)
 

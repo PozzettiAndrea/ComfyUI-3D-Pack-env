@@ -10,11 +10,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from huggingface_hub import PyTorchModelHubMixin
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class REBNCONV(nn.Module):
     def __init__(self,in_ch=3,out_ch=3,dirate=1,stride=1):
         super(REBNCONV,self).__init__()
 
-        self.conv_s1 = nn.Conv2d(in_ch,out_ch,3,padding=1*dirate,dilation=1*dirate,stride=stride)
+        self.conv_s1 = ops.Conv2d(in_ch,out_ch,3,padding=1*dirate,dilation=1*dirate,stride=stride)
         self.bn_s1 = nn.BatchNorm2d(out_ch)
         self.relu_s1 = nn.ReLU(inplace=True)
 
@@ -338,7 +345,7 @@ class myrebnconv(nn.Module):
                        groups=1):
         super(myrebnconv,self).__init__()
 
-        self.conv = nn.Conv2d(in_ch,
+        self.conv = ops.Conv2d(in_ch,
                               out_ch,
                               kernel_size=kernel_size,
                               stride=stride,
@@ -358,7 +365,7 @@ class BriaRMBG(nn.Module, PyTorchModelHubMixin):
         super(BriaRMBG,self).__init__()
         in_ch=config["in_ch"]
         out_ch=config["out_ch"]
-        self.conv_in = nn.Conv2d(in_ch,64,3,stride=2,padding=1)
+        self.conv_in = ops.Conv2d(in_ch,64,3,stride=2,padding=1)
         self.pool_in = nn.MaxPool2d(2,stride=2,ceil_mode=True)
 
         self.stage1 = RSU7(64,32,64)
@@ -385,12 +392,12 @@ class BriaRMBG(nn.Module, PyTorchModelHubMixin):
         self.stage2d = RSU6(256,32,64)
         self.stage1d = RSU7(128,16,64)
 
-        self.side1 = nn.Conv2d(64,out_ch,3,padding=1)
-        self.side2 = nn.Conv2d(64,out_ch,3,padding=1)
-        self.side3 = nn.Conv2d(128,out_ch,3,padding=1)
-        self.side4 = nn.Conv2d(256,out_ch,3,padding=1)
-        self.side5 = nn.Conv2d(512,out_ch,3,padding=1)
-        self.side6 = nn.Conv2d(512,out_ch,3,padding=1)
+        self.side1 = ops.Conv2d(64,out_ch,3,padding=1)
+        self.side2 = ops.Conv2d(64,out_ch,3,padding=1)
+        self.side3 = ops.Conv2d(128,out_ch,3,padding=1)
+        self.side4 = ops.Conv2d(256,out_ch,3,padding=1)
+        self.side5 = ops.Conv2d(512,out_ch,3,padding=1)
+        self.side6 = ops.Conv2d(512,out_ch,3,padding=1)
 
         # self.outconv = nn.Conv2d(6*out_ch,out_ch,1)
 

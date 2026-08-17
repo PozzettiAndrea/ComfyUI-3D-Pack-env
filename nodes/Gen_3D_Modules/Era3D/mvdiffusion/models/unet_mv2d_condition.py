@@ -59,6 +59,13 @@ from diffusers.utils import (
 from diffusers.utils.import_utils import is_accelerate_available 
 from diffusers.utils.hub_utils import HF_HUB_OFFLINE
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE
+
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
 DIFFUSERS_CACHE = HUGGINGFACE_HUB_CACHE
 
 from diffusers import __version__
@@ -93,9 +100,9 @@ class UNetMV2DConditionOutput(BaseOutput):
 class ResidualBlock(nn.Module):
     def __init__(self, dim):
         super(ResidualBlock, self).__init__()
-        self.linear1 = nn.Linear(dim, dim)
+        self.linear1 = ops.Linear(dim, dim)
         self.activation = nn.SiLU()
-        self.linear2 = nn.Linear(dim, dim)
+        self.linear2 = ops.Linear(dim, dim)
 
     def forward(self, x):
         identity = x
@@ -109,14 +116,14 @@ class ResidualBlock(nn.Module):
 class ResidualLiner(nn.Module):
     def __init__(self, in_features, out_features, dim, act=None, num_block=1):
         super(ResidualLiner, self).__init__()
-        self.linear_in = nn.Sequential(nn.Linear(in_features, dim), nn.SiLU())
+        self.linear_in = nn.Sequential(ops.Linear(in_features, dim), nn.SiLU())
         
         blocks = nn.ModuleList()
         for _ in range(num_block):
             blocks.append(ResidualBlock(dim))
         self.blocks = blocks    
         
-        self.linear_out = nn.Linear(dim, out_features)
+        self.linear_out = ops.Linear(dim, out_features)
         self.act = act
 
     def forward(self, x):
@@ -131,16 +138,16 @@ class ResidualLiner(nn.Module):
 class BasicConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(BasicConvBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.norm1 = nn.GroupNorm(num_groups=8, num_channels=in_channels,  affine=True)
+        self.conv1 = ops.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.norm1 = ops.GroupNorm(num_groups=8, num_channels=in_channels,  affine=True)
         self.act = nn.SiLU()
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.norm2 = nn.GroupNorm(num_groups=8, num_channels=in_channels,  affine=True)
+        self.conv2 = ops.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.norm2 = ops.GroupNorm(num_groups=8, num_channels=in_channels,  affine=True)
         self.downsample = nn.Sequential()
         if stride != 1 or in_channels != out_channels:
             self.downsample = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.GroupNorm(num_groups=8, num_channels=in_channels,  affine=True)
+                ops.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                ops.GroupNorm(num_groups=8, num_channels=in_channels,  affine=True)
             )
 
     def forward(self, x):
@@ -368,7 +375,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
-        self.conv_in = nn.Conv2d(
+        self.conv_in = ops.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
         )
 
@@ -410,7 +417,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             )
 
         if encoder_hid_dim_type == "text_proj":
-            self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
+            self.encoder_hid_proj = ops.Linear(encoder_hid_dim, cross_attention_dim)
         elif encoder_hid_dim_type == "text_image_proj":
             # image_embed_dim DOESN'T have to be `cross_attention_dim`. To not clutter the __init__ too much
             # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
@@ -435,7 +442,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
-            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+            self.class_embedding = ops.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=act_fn)
         elif class_embed_type == "identity":
@@ -458,7 +465,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                 raise ValueError(
                     "`class_embed_type`: 'simple_projection' requires `projection_class_embeddings_input_dim` be set"
                 )
-            self.class_embedding = nn.Linear(projection_class_embeddings_input_dim, time_embed_dim)
+            self.class_embedding = ops.Linear(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
 
@@ -642,7 +649,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             for dim_ in addition_channels[1:-1]:  
                 self.conv_block.append(BasicConvBlock(dim_, dim_, stride=1))    
             self.conv_block.append(BasicConvBlock(dim_, inc))
-            self.addition_conv_out = nn.Conv2d(inc, inc, kernel_size=1, bias=False)
+            self.addition_conv_out = ops.Conv2d(inc, inc, kernel_size=1, bias=False)
             nn.init.zeros_(self.addition_conv_out.weight.data)
             self.addition_act_out = nn.SiLU()
             self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
@@ -676,11 +683,11 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         assert projection_camera_embeddings_input_dim == 2*cam_dim, "projection_camera_embeddings_input_dim should be 2*cam_dim"
         if regress_elevation or regress_focal_length:
             self.elevation_regressor = nn.ModuleList([
-                nn.Linear(block_out_channels[-1], 1280),
+                ops.Linear(block_out_channels[-1], 1280),
                 nn.SiLU(),
-                nn.Linear(1280, 1280),
+                ops.Linear(1280, 1280),
                 nn.SiLU(),
-                nn.Linear(1280, cam_dim)
+                ops.Linear(1280, cam_dim)
             ])
             self.pool = nn.AdaptiveAvgPool2d((1, 1))
             self.focal_act = nn.Softmax(dim=-1)
@@ -750,7 +757,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
 
         # out
         if norm_num_groups is not None:
-            self.conv_norm_out = nn.GroupNorm(
+            self.conv_norm_out = ops.GroupNorm(
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
 
@@ -761,7 +768,7 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             self.conv_act = None
 
         conv_out_padding = (conv_out_kernel - 1) // 2
-        self.conv_out = nn.Conv2d(
+        self.conv_out = ops.Conv2d(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
 

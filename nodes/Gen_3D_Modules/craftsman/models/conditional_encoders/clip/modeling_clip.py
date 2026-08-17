@@ -37,6 +37,13 @@ from transformers.utils import (
 )
 from transformers.models.clip.configuration_clip import CLIPConfig, CLIPTextConfig, CLIPVisionConfig
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 logger = logging.get_logger(__name__)
 
@@ -166,7 +173,7 @@ class CLIPVisionEmbeddings(nn.Module):
 
         self.class_embedding = nn.Parameter(torch.randn(self.embed_dim))
 
-        self.patch_embedding = nn.Conv2d(
+        self.patch_embedding = ops.Conv2d(
             in_channels=config.num_channels,
             out_channels=self.embed_dim,
             kernel_size=self.patch_size,
@@ -176,7 +183,7 @@ class CLIPVisionEmbeddings(nn.Module):
 
         self.num_patches = (self.image_size // self.patch_size) ** 2
         self.num_positions = self.num_patches + 1
-        self.position_embedding = nn.Embedding(self.num_positions, self.embed_dim)
+        self.position_embedding = ops.Embedding(self.num_positions, self.embed_dim)
         self.register_buffer("position_ids", torch.arange(self.num_positions).expand((1, -1)), persistent=False)
 
     def forward(self, pixel_values: torch.FloatTensor) -> torch.Tensor:
@@ -196,8 +203,8 @@ class CLIPTextEmbeddings(nn.Module):
         super().__init__()
         embed_dim = config.hidden_size
 
-        self.token_embedding = nn.Embedding(config.vocab_size, embed_dim)
-        self.position_embedding = nn.Embedding(config.max_position_embeddings, embed_dim)
+        self.token_embedding = ops.Embedding(config.vocab_size, embed_dim)
+        self.position_embedding = ops.Embedding(config.max_position_embeddings, embed_dim)
 
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         self.register_buffer(
@@ -241,10 +248,10 @@ class CLIPAttention(nn.Module):
         self.scale = self.head_dim**-0.5
         self.dropout = config.attention_dropout
 
-        self.k_proj = nn.Linear(self.embed_dim, self.embed_dim)
-        self.v_proj = nn.Linear(self.embed_dim, self.embed_dim)
-        self.q_proj = nn.Linear(self.embed_dim, self.embed_dim)
-        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim)
+        self.k_proj = ops.Linear(self.embed_dim, self.embed_dim)
+        self.v_proj = ops.Linear(self.embed_dim, self.embed_dim)
+        self.q_proj = ops.Linear(self.embed_dim, self.embed_dim)
+        self.out_proj = ops.Linear(self.embed_dim, self.embed_dim)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -333,8 +340,8 @@ class CLIPMLP(nn.Module):
         super().__init__()
         self.config = config
         self.activation_fn = ACT2FN[config.hidden_act]
-        self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
+        self.fc1 = ops.Linear(config.hidden_size, config.intermediate_size)
+        self.fc2 = ops.Linear(config.intermediate_size, config.hidden_size)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.fc1(hidden_states)
@@ -348,9 +355,9 @@ class CLIPEncoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = config.hidden_size
         self.self_attn = CLIPAttention(config)
-        self.layer_norm1 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
+        self.layer_norm1 = ops.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
         self.mlp = CLIPMLP(config)
-        self.layer_norm2 = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
+        self.layer_norm2 = ops.LayerNorm(self.embed_dim, eps=config.layer_norm_eps)
 
     def forward(
         self,
@@ -664,7 +671,7 @@ class CLIPTextTransformer(nn.Module):
         embed_dim = config.hidden_size
         self.embeddings = CLIPTextEmbeddings(config)
         self.encoder = CLIPEncoder(config)
-        self.final_layer_norm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
+        self.final_layer_norm = ops.LayerNorm(embed_dim, eps=config.layer_norm_eps)
 
         # For `pooled_output` computation
         self.eos_token_id = config.eos_token_id
@@ -821,9 +828,9 @@ class CLIPVisionTransformer(nn.Module):
         embed_dim = config.hidden_size
 
         self.embeddings = CLIPVisionEmbeddings(config)
-        self.pre_layrnorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
+        self.pre_layrnorm = ops.LayerNorm(embed_dim, eps=config.layer_norm_eps)
         self.encoder = CLIPEncoder(config)
-        self.post_layernorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
+        self.post_layernorm = ops.LayerNorm(embed_dim, eps=config.layer_norm_eps)
 
     @add_start_docstrings_to_model_forward(CLIP_VISION_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=BaseModelOutputWithPooling, config_class=CLIPVisionConfig)
@@ -961,8 +968,8 @@ class CLIPModel(CLIPPreTrainedModel):
         self.text_model = CLIPTextTransformer(text_config)
         self.vision_model = CLIPVisionTransformer(vision_config)
 
-        self.visual_projection = nn.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
-        self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
+        self.visual_projection = ops.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
+        self.text_projection = ops.Linear(self.text_embed_dim, self.projection_dim, bias=False)
         self.logit_scale = nn.Parameter(torch.tensor(self.config.logit_scale_init_value))
 
         # Initialize weights and apply final processing
@@ -1174,7 +1181,7 @@ class CLIPTextModelWithProjection(CLIPPreTrainedModel):
 
         self.text_model = CLIPTextTransformer(config)
 
-        self.text_projection = nn.Linear(config.hidden_size, config.projection_dim, bias=False)
+        self.text_projection = ops.Linear(config.hidden_size, config.projection_dim, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1254,7 +1261,7 @@ class CLIPVisionModelWithProjection(CLIPPreTrainedModel):
 
         self.vision_model = CLIPVisionTransformer(config)
 
-        self.visual_projection = nn.Linear(config.hidden_size, config.projection_dim, bias=False)
+        self.visual_projection = ops.Linear(config.hidden_size, config.projection_dim, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1335,7 +1342,7 @@ class CLIPForImageClassification(CLIPPreTrainedModel):
 
         # Classifier head
         self.classifier = (
-            nn.Linear(config.vision_config.hidden_size, config.num_labels) if config.num_labels > 0 else nn.Identity()
+            ops.Linear(config.vision_config.hidden_size, config.num_labels) if config.num_labels > 0 else nn.Identity()
         )
 
         # Initialize weights and apply final processing

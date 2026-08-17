@@ -15,6 +15,13 @@ from einops import rearrange, reduce
 
 from ....mesh_processer.mesh_utils import construct_list_of_gs_attributes, write_gs_ply
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 inverse_sigmoid = lambda x: np.log(x / (1 - x))
 
 def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
@@ -123,7 +130,7 @@ class GSLayer(BaseModule):
         for key, out_ch in self.cfg.feature_channels.items():
             if key == "shs" and self.cfg.use_rgb:
                 out_ch = 3
-            layer = nn.Linear(self.cfg.in_channels, out_ch)
+            layer = ops.Linear(self.cfg.in_channels, out_ch)
 
             # initialize
             if not (key == "shs" and self.cfg.use_rgb):

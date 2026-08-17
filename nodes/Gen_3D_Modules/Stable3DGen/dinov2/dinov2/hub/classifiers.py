@@ -12,6 +12,13 @@ import torch.nn as nn
 from .backbones import _make_dinov2_model
 from .utils import _DINOV2_BASE_URL, _make_dinov2_model_name
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Weights(Enum):
     IMAGENET1K = "IMAGENET1K"
@@ -36,7 +43,7 @@ def _make_dinov2_linear_classification_head(
         except KeyError:
             raise AssertionError(f"Unsupported weights: {weights}")
 
-    linear_head = nn.Linear((1 + layers) * embed_dim, 1_000)
+    linear_head = ops.Linear((1 + layers) * embed_dim, 1_000)
 
     if pretrained:
         model_base_name = _make_dinov2_model_name(arch_name, patch_size)

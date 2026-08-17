@@ -42,6 +42,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Attention(nn.Module):
     r"""
@@ -154,7 +161,7 @@ class Attention(nn.Module):
             )
 
         if norm_num_groups is not None:
-            self.group_norm = nn.GroupNorm(
+            self.group_norm = ops.GroupNorm(
                 num_channels=query_dim, num_groups=norm_num_groups, eps=eps, affine=True
             )
         else:
@@ -165,7 +172,7 @@ class Attention(nn.Module):
         if cross_attention_norm is None:
             self.norm_cross = None
         elif cross_attention_norm == "layer_norm":
-            self.norm_cross = nn.LayerNorm(self.cross_attention_dim)
+            self.norm_cross = ops.LayerNorm(self.cross_attention_dim)
         elif cross_attention_norm == "group_norm":
             if self.added_kv_proj_dim is not None:
                 # The given `encoder_hidden_states` are initially of shape
@@ -177,7 +184,7 @@ class Attention(nn.Module):
             else:
                 norm_cross_num_channels = self.cross_attention_dim
 
-            self.norm_cross = nn.GroupNorm(
+            self.norm_cross = ops.GroupNorm(
                 num_channels=norm_cross_num_channels,
                 num_groups=cross_attention_norm_num_groups,
                 eps=1e-5,

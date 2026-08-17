@@ -11,6 +11,13 @@ from ..transformers.attention import ResidualAttentionBlock
 from ..transformers.utils import init_linear, MLP
 from ...utils.base import BaseModule
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class UNetDiffusionTransformer(nn.Module):
     def __init__(
@@ -62,10 +69,10 @@ class UNetDiffusionTransformer(nn.Module):
                 qkv_bias=qkv_bias,
                 use_checkpoint=use_checkpoint
             )
-            linear = nn.Linear(width * 2, width)
+            linear = ops.Linear(width * 2, width)
             init_linear(linear, init_scale)
 
-            layer_norm = nn.LayerNorm(width) if skip_ln else None
+            layer_norm = ops.LayerNorm(width) if skip_ln else None
 
             self.decoder.append(nn.ModuleList([resblock, linear, layer_norm]))
 
@@ -125,9 +132,9 @@ class SimpleDenoiser(BaseModule):
             init_scale=init_scale,
             use_checkpoint=self.cfg.use_checkpoint
         )
-        self.ln_post = nn.LayerNorm(self.cfg.width)
-        self.input_proj = nn.Linear(self.cfg.input_channels, self.cfg.width)
-        self.output_proj = nn.Linear(self.cfg.width, self.cfg.output_channels)
+        self.ln_post = ops.LayerNorm(self.cfg.width)
+        self.input_proj = ops.Linear(self.cfg.input_channels, self.cfg.width)
+        self.output_proj = ops.Linear(self.cfg.width, self.cfg.output_channels)
 
         # timestep embedding
         self.time_embed = Timesteps(self.cfg.width, flip_sin_to_cos=self.cfg.flip_sin_to_cos, downscale_freq_shift=0)
@@ -135,11 +142,11 @@ class SimpleDenoiser(BaseModule):
 
         if self.cfg.context_ln:
             self.context_embed = nn.Sequential(
-                nn.LayerNorm(self.cfg.context_dim),
-                nn.Linear(self.cfg.context_dim, self.cfg.width),
+                ops.LayerNorm(self.cfg.context_dim),
+                ops.Linear(self.cfg.context_dim, self.cfg.width),
             )
         else:
-            self.context_embed = nn.Linear(self.cfg.context_dim, self.cfg.width)
+            self.context_embed = ops.Linear(self.cfg.context_dim, self.cfg.width)
         
         if self.cfg.pretrained_model_name_or_path:
             pretrained_ckpt = torch.load(self.cfg.pretrained_model_name_or_path, map_location="cpu")

@@ -16,6 +16,13 @@
 import torch
 import torch.nn as nn
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class BasicTransformerBlock(nn.Module):
     """
@@ -36,20 +43,20 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        self.norm1 = nn.LayerNorm(inner_dim)
+        self.norm1 = ops.LayerNorm(inner_dim)
         self.cross_attn = nn.MultiheadAttention(
             embed_dim=inner_dim, num_heads=num_heads, kdim=cond_dim, vdim=cond_dim,
             dropout=attn_drop, bias=attn_bias, batch_first=True)
-        self.norm2 = nn.LayerNorm(inner_dim)
+        self.norm2 = ops.LayerNorm(inner_dim)
         self.self_attn = nn.MultiheadAttention(
             embed_dim=inner_dim, num_heads=num_heads,
             dropout=attn_drop, bias=attn_bias, batch_first=True)
-        self.norm3 = nn.LayerNorm(inner_dim)
+        self.norm3 = ops.LayerNorm(inner_dim)
         self.mlp = nn.Sequential(
-            nn.Linear(inner_dim, int(inner_dim * mlp_ratio)),
+            ops.Linear(inner_dim, int(inner_dim * mlp_ratio)),
             nn.GELU(),
             nn.Dropout(mlp_drop),
-            nn.Linear(int(inner_dim * mlp_ratio), inner_dim),
+            ops.Linear(int(inner_dim * mlp_ratio), inner_dim),
             nn.Dropout(mlp_drop),
         )
 
@@ -96,8 +103,8 @@ class TriplaneTransformer(nn.Module):
                 inner_dim=inner_dim, cond_dim=image_feat_dim, num_heads=num_heads, eps=eps)
             for _ in range(num_layers)
         ])
-        self.norm = nn.LayerNorm(inner_dim, eps=eps)
-        self.deconv = nn.ConvTranspose2d(inner_dim, triplane_dim, kernel_size=2, stride=2, padding=0)
+        self.norm = ops.LayerNorm(inner_dim, eps=eps)
+        self.deconv = ops.ConvTranspose2d(inner_dim, triplane_dim, kernel_size=2, stride=2, padding=0)
 
     def forward(self, image_feats):
         # image_feats: [N, L_cond, D_cond]

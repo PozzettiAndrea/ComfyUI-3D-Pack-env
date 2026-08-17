@@ -8,6 +8,13 @@ from ...utils.checkpoint import checkpoint
 
 from .utils import init_linear, MLP
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class MultiheadAttention(nn.Module):
     def __init__(
         self,
@@ -23,8 +30,8 @@ class MultiheadAttention(nn.Module):
         self.n_ctx = n_ctx
         self.width = width
         self.heads = heads
-        self.c_qkv = nn.Linear(width, width * 3, bias=qkv_bias)
-        self.c_proj = nn.Linear(width, width)
+        self.c_qkv = ops.Linear(width, width * 3, bias=qkv_bias)
+        self.c_proj = ops.Linear(width, width)
         self.attention = QKVMultiheadAttention(heads=heads, n_ctx=n_ctx, use_flash=use_flash)
         init_linear(self.c_qkv, init_scale)
         init_linear(self.c_proj, init_scale)
@@ -89,9 +96,9 @@ class ResidualAttentionBlock(nn.Module):
             qkv_bias=qkv_bias,
             use_flash=use_flash
         )
-        self.ln_1 = nn.LayerNorm(width)
+        self.ln_1 = ops.LayerNorm(width)
         self.mlp = MLP(width=width, init_scale=init_scale)
-        self.ln_2 = nn.LayerNorm(width)
+        self.ln_2 = ops.LayerNorm(width)
 
     def _forward(self, x: torch.Tensor):
         x = x + self.attn(self.ln_1(x))
@@ -119,9 +126,9 @@ class MultiheadCrossAttention(nn.Module):
         self.width = width
         self.heads = heads
         self.data_width = width if data_width is None else data_width
-        self.c_q = nn.Linear(width, width, bias=qkv_bias)
-        self.c_kv = nn.Linear(self.data_width, width * 2, bias=qkv_bias)
-        self.c_proj = nn.Linear(width, width)
+        self.c_q = ops.Linear(width, width, bias=qkv_bias)
+        self.c_kv = ops.Linear(self.data_width, width * 2, bias=qkv_bias)
+        self.c_proj = ops.Linear(width, width)
         self.attention = QKVMultiheadCrossAttention(
             heads=heads, n_data=n_data, use_flash=use_flash
         )
@@ -196,10 +203,10 @@ class ResidualCrossAttentionBlock(nn.Module):
             qkv_bias=qkv_bias,
             use_flash=use_flash,
         )
-        self.ln_1 = nn.LayerNorm(width)
-        self.ln_2 = nn.LayerNorm(data_width)
+        self.ln_1 = ops.LayerNorm(width)
+        self.ln_2 = ops.LayerNorm(data_width)
         self.mlp = MLP(width=width, init_scale=init_scale)
-        self.ln_3 = nn.LayerNorm(width)
+        self.ln_3 = ops.LayerNorm(width)
 
     def forward(self, x: torch.Tensor, data: torch.Tensor):
         x = x + self.attn(self.ln_1(x), self.ln_2(data))

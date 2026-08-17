@@ -15,6 +15,13 @@ from diffusers.models.attention import CrossAttention, FeedForward, AdaLayerNorm
 
 from einops import rearrange, repeat
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 @dataclass
 class Transformer3DModelOutput(BaseOutput):
@@ -56,11 +63,11 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         # Define input layers
         self.in_channels = in_channels
 
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = ops.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         if use_linear_projection:
-            self.proj_in = nn.Linear(in_channels, inner_dim)
+            self.proj_in = ops.Linear(in_channels, inner_dim)
         else:
-            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+            self.proj_in = ops.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
         # Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -84,9 +91,9 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         # 4. Define output layers
         if use_linear_projection:
-            self.proj_out = nn.Linear(in_channels, inner_dim)
+            self.proj_out = ops.Linear(in_channels, inner_dim)
         else:
-            self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+            self.proj_out = ops.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         # Input
@@ -167,7 +174,7 @@ class BasicTransformerBlock(nn.Module):
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
         )
-        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else ops.LayerNorm(dim)
 
         # Cross-Attn
         if cross_attention_dim is not None:
@@ -184,13 +191,13 @@ class BasicTransformerBlock(nn.Module):
             self.attn2 = None
 
         if cross_attention_dim is not None:
-            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else ops.LayerNorm(dim)
         else:
             self.norm2 = None
 
         # Feed-forward
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
-        self.norm3 = nn.LayerNorm(dim)
+        self.norm3 = ops.LayerNorm(dim)
 
         # Temp-Attn
         if self.use_attn_temp:
@@ -203,7 +210,7 @@ class BasicTransformerBlock(nn.Module):
                 upcast_attention=upcast_attention,
             )
             nn.init.zeros_(self.attn_temp.to_out[0].weight.data)
-            self.norm_temp = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+            self.norm_temp = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else ops.LayerNorm(dim)
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():

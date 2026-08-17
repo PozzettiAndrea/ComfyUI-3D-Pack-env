@@ -4,6 +4,13 @@ from ...utils.base import BaseModule
 from ...utils.typing import *
 import torch
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class PointLearnablePositionalEmbedding(BaseModule):
     @dataclass
     class Config(BaseModule.Config):
@@ -14,7 +21,7 @@ class PointLearnablePositionalEmbedding(BaseModule):
 
     def configure(self) -> None:
         super().configure()
-        self.pcl_embeddings = nn.Embedding(
+        self.pcl_embeddings = ops.Embedding(
                self.cfg.num_pcl , self.cfg.num_channels
             )
 

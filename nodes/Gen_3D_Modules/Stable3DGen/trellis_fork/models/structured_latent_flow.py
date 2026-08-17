@@ -10,6 +10,13 @@ from ..modules import sparse as sp
 from ..modules.sparse.transformer import ModulatedSparseTransformerCrossBlock
 from .sparse_structure_flow import TimestepEmbedder
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class SparseResBlock3d(nn.Module):
     def __init__(
@@ -35,7 +42,7 @@ class SparseResBlock3d(nn.Module):
         self.conv2 = zero_module(sp.SparseConv3d(self.out_channels, self.out_channels, 3))
         self.emb_layers = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(emb_channels, 2 * self.out_channels, bias=True),
+            ops.Linear(emb_channels, 2 * self.out_channels, bias=True),
         )
         self.skip_connection = sp.SparseLinear(channels, self.out_channels) if channels != self.out_channels else nn.Identity()
         self.updown = None
@@ -116,7 +123,7 @@ class SLatFlowModel(nn.Module):
         if share_mod:
             self.adaLN_modulation = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(model_channels, 6 * model_channels, bias=True)
+                ops.Linear(model_channels, 6 * model_channels, bias=True)
             )
 
         if pe_mode == "ape":

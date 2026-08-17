@@ -28,6 +28,13 @@ from pytorch_lightning.utilities import rank_zero_only, rank_zero_warn
 from .src.utils.train_util import instantiate_from_config
 import warnings
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 warnings.filterwarnings("ignore")
 from diffusers.utils import logging as diffusers_logging
 
@@ -246,7 +253,7 @@ if __name__ == "__main__":
     noise_in_channels = config.model.params.get("noise_in_channels", None)
     if noise_in_channels is not None:
         with torch.no_grad():
-            new_conv_in = torch.nn.Conv2d(
+            new_conv_in = ops.Conv2d(
                 noise_in_channels,
                 model_unet.conv_in.out_channels,
                 model_unet.conv_in.kernel_size,
@@ -267,7 +274,7 @@ if __name__ == "__main__":
             model.unet.controlnet.config["conditioning_channels"] = control_in_channels
             condition_conv_in = model.unet.controlnet.controlnet_cond_embedding.conv_in
 
-            new_condition_conv_in = torch.nn.Conv2d(
+            new_condition_conv_in = ops.Conv2d(
                 control_in_channels,
                 condition_conv_in.out_channels,
                 kernel_size=condition_conv_in.kernel_size,

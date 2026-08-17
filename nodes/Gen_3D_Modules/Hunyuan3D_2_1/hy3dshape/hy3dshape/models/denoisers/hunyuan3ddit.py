@@ -21,6 +21,13 @@ import torch
 from torch import Tensor, nn
 from einops import rearrange
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 # set up attention backend
 scaled_dot_product_attention = nn.functional.scaled_dot_product_attention
 if os.environ.get('USE_SAGEATTN', '0') == '1':
@@ -72,9 +79,9 @@ class GELU(nn.Module):
 class MLPEmbedder(nn.Module):
     def __init__(self, in_dim: int, hidden_dim: int):
         super().__init__()
-        self.in_layer = nn.Linear(in_dim, hidden_dim, bias=True)
+        self.in_layer = ops.Linear(in_dim, hidden_dim, bias=True)
         self.silu = nn.SiLU()
-        self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        self.out_layer = ops.Linear(hidden_dim, hidden_dim, bias=True)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
@@ -115,9 +122,9 @@ class SelfAttention(nn.Module):
         self.num_heads = num_heads
         head_dim = dim // num_heads
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = ops.Linear(dim, dim * 3, bias=qkv_bias)
         self.norm = QKNorm(head_dim)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = ops.Linear(dim, dim)
 
     def forward(self, x: Tensor, pe: Tensor) -> Tensor:
         qkv = self.qkv(x)
@@ -140,7 +147,7 @@ class Modulation(nn.Module):
         super().__init__()
         self.is_double = double
         self.multiplier = 6 if double else 3
-        self.lin = nn.Linear(dim, self.multiplier * dim, bias=True)
+        self.lin = ops.Linear(dim, self.multiplier * dim, bias=True)
 
     def forward(self, vec: Tensor) -> Tuple[ModulationOut, Optional[ModulationOut]]:
         out = self.lin(nn.functional.silu(vec))[:, None, :]
@@ -165,25 +172,25 @@ class DoubleStreamBlock(nn.Module):
         self.num_heads = num_heads
         self.hidden_size = hidden_size
         self.img_mod = Modulation(hidden_size, double=True)
-        self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.img_norm1 = ops.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.img_attn = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias)
 
-        self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.img_norm2 = ops.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.img_mlp = nn.Sequential(
-            nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
+            ops.Linear(hidden_size, mlp_hidden_dim, bias=True),
             GELU(approximate="tanh"),
-            nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
+            ops.Linear(mlp_hidden_dim, hidden_size, bias=True),
         )
 
         self.txt_mod = Modulation(hidden_size, double=True)
-        self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.txt_norm1 = ops.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.txt_attn = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias)
 
-        self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.txt_norm2 = ops.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.txt_mlp = nn.Sequential(
-            nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
+            ops.Linear(hidden_size, mlp_hidden_dim, bias=True),
             GELU(approximate="tanh"),
-            nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
+            ops.Linear(mlp_hidden_dim, hidden_size, bias=True),
         )
 
     def forward(self, img: Tensor, txt: Tensor, vec: Tensor, pe: Tensor) -> Tuple[Tensor, Tensor]:
@@ -239,14 +246,14 @@ class SingleStreamBlock(nn.Module):
 
         self.mlp_hidden_dim = int(hidden_size * mlp_ratio)
         # qkv and mlp_in
-        self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + self.mlp_hidden_dim)
+        self.linear1 = ops.Linear(hidden_size, hidden_size * 3 + self.mlp_hidden_dim)
         # proj and mlp_out
-        self.linear2 = nn.Linear(hidden_size + self.mlp_hidden_dim, hidden_size)
+        self.linear2 = ops.Linear(hidden_size + self.mlp_hidden_dim, hidden_size)
 
         self.norm = QKNorm(head_dim)
 
         self.hidden_size = hidden_size
-        self.pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.pre_norm = ops.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         self.mlp_act = GELU(approximate="tanh")
         self.modulation = Modulation(hidden_size, double=False)
@@ -270,9 +277,9 @@ class SingleStreamBlock(nn.Module):
 class LastLayer(nn.Module):
     def __init__(self, hidden_size: int, patch_size: int, out_channels: int):
         super().__init__()
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-        self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
+        self.norm_final = ops.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.linear = ops.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
+        self.adaLN_modulation = nn.Sequential(nn.SiLU(), ops.Linear(hidden_size, 2 * hidden_size, bias=True))
 
     def forward(self, x: Tensor, vec: Tensor) -> Tensor:
         shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)
@@ -323,9 +330,9 @@ class Hunyuan3DDiT(nn.Module):
             raise ValueError(f"Got {axes_dim} but expected positional dim {pe_dim}")
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.latent_in = nn.Linear(self.in_channels, self.hidden_size, bias=True)
+        self.latent_in = ops.Linear(self.in_channels, self.hidden_size, bias=True)
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
-        self.cond_in = nn.Linear(context_in_dim, self.hidden_size)
+        self.cond_in = ops.Linear(context_in_dim, self.hidden_size)
         self.guidance_in = (
             MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size) if guidance_embed else nn.Identity()
         )

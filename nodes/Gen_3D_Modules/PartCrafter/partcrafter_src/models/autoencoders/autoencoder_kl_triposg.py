@@ -14,6 +14,13 @@ from diffusers.utils.accelerate_utils import apply_forward_hook
 from einops import repeat
 from tqdm import tqdm
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 # Check torch_cluster availability
 try:
     from torch_cluster import fps
@@ -44,7 +51,7 @@ class TripoSGEncoder(nn.Module):
     ):
         super().__init__()
 
-        self.proj_in = nn.Linear(in_channels, dim, bias=True)
+        self.proj_in = ops.Linear(in_channels, dim, bias=True)
 
         self.blocks = nn.ModuleList(
             [
@@ -152,10 +159,10 @@ class TripoSGDecoder(nn.Module):
             ]
         )
 
-        self.proj_query = nn.Linear(in_channels, dim, bias=True)
+        self.proj_query = ops.Linear(in_channels, dim, bias=True)
 
         self.norm_out = LayerNorm(dim)
-        self.proj_out = nn.Linear(dim, out_channels, bias=True)
+        self.proj_out = ops.Linear(dim, out_channels, bias=True)
 
     def set_topk(self, topk):
         self.blocks[-1].set_topk(topk)
@@ -275,8 +282,8 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
             num_layers=num_layers_decoder,
         )
 
-        self.quant = nn.Linear(width_encoder, latent_channels * 2, bias=True)
-        self.post_quant = nn.Linear(latent_channels, width_decoder, bias=True)
+        self.quant = ops.Linear(width_encoder, latent_channels * 2, bias=True)
+        self.post_quant = ops.Linear(latent_channels, width_decoder, bias=True)
 
         self.use_slicing = False
         self.slicing_length = 1

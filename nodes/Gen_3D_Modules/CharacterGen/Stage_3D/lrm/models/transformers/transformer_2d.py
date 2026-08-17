@@ -13,6 +13,13 @@ from .attention import (
 )
 from ...utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Transformer2D(BaseModule, MemoryEfficientAttentionMixin):
     """
@@ -129,7 +136,7 @@ class Transformer2D(BaseModule, MemoryEfficientAttentionMixin):
         if self.is_input_continuous:
             self.in_channels = self.cfg.in_channels
 
-            self.norm = torch.nn.GroupNorm(
+            self.norm = ops.GroupNorm(
                 num_groups=self.cfg.norm_num_groups,
                 num_channels=self.cfg.in_channels,
                 eps=1e-6,
@@ -215,12 +222,12 @@ class Transformer2D(BaseModule, MemoryEfficientAttentionMixin):
                     inner_dim, self.cfg.in_channels, kernel_size=1, stride=1, padding=0
                 )
         elif self.is_input_vectorized:
-            self.norm_out = nn.LayerNorm(inner_dim)
-            self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
+            self.norm_out = ops.LayerNorm(inner_dim)
+            self.out = ops.Linear(inner_dim, self.num_vector_embeds - 1)
         elif self.is_input_patches:
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(
+            self.norm_out = ops.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+            self.proj_out_1 = ops.Linear(inner_dim, 2 * inner_dim)
+            self.proj_out_2 = ops.Linear(
                 inner_dim, self.cfg.patch_size * self.cfg.patch_size * self.out_channels
             )
 

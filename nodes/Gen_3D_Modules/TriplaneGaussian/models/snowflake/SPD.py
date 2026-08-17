@@ -6,6 +6,13 @@ import torch.nn as nn
 from .utils import MLP_Res, MLP_CONV
 from .skip_transformer import SkipTransformer
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class SPD(nn.Module):
     def __init__(self, dim_feat=512, up_factor=2, i=0, radius=1, bounding=True, global_feat=True):
@@ -26,7 +33,7 @@ class SPD(nn.Module):
         self.skip_transformer = SkipTransformer(in_channel=128, dim=64)
 
         self.mlp_ps = MLP_CONV(in_channel=128, layer_dims=[64, self.ps_dim])
-        self.ps = nn.ConvTranspose1d(self.ps_dim, 128, up_factor, up_factor, bias=False)   # point-wise splitting
+        self.ps = ops.ConvTranspose1d(self.ps_dim, 128, up_factor, up_factor, bias=False)   # point-wise splitting
 
         self.up_sampler = nn.Upsample(scale_factor=up_factor)
         self.mlp_delta_feature = MLP_Res(in_dim=256, hidden_dim=128, out_dim=128)

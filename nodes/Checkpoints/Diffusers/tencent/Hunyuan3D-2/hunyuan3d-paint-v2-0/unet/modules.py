@@ -31,6 +31,13 @@ from diffusers.utils import deprecate
 
 from diffusers.models.transformers.transformer_2d import BasicTransformerBlock
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 
 def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int):
@@ -291,7 +298,7 @@ class UNet2p5DConditionModel(torch.nn.Module):
         return unet
 
     def init_condition(self):
-        self.unet.conv_in = torch.nn.Conv2d(
+        self.unet.conv_in = ops.Conv2d(
             12, 
             self.unet.conv_in.out_channels, 
             kernel_size=self.unet.conv_in.kernel_size, 
@@ -310,7 +317,7 @@ class UNet2p5DConditionModel(torch.nn.Module):
 
         if self.use_camera_embedding:
             time_embed_dim = 1280
-            self.unet.class_embedding = nn.Embedding(self.max_num_ref_image+self.max_num_gen_image, time_embed_dim)
+            self.unet.class_embedding = ops.Embedding(self.max_num_ref_image+self.max_num_gen_image, time_embed_dim)
 
 
     def init_attention(self, unet, use_ma=False, use_ra=False):

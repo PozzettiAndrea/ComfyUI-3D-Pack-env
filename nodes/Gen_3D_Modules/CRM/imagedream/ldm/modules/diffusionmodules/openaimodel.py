@@ -12,6 +12,13 @@ from .util import checkpoint, conv_nd, linear, avg_pool_nd, zero_module, normali
 from ..attention import SpatialTransformer, SpatialTransformer3D, exists
 from .adaptors import Resampler, ImageProjModel
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 ## go
 class AttentionPool2d(nn.Module):
     """
@@ -117,7 +124,7 @@ class TransposedUpsample(nn.Module):
         self.channels = channels
         self.out_channels = out_channels or channels
 
-        self.up = nn.ConvTranspose2d(
+        self.up = ops.ConvTranspose2d(
             self.channels, self.out_channels, kernel_size=ks, stride=2
         )
 
@@ -583,10 +590,10 @@ class MultiViewUNetModel(nn.Module):
 
         if self.num_classes is not None:
             if isinstance(self.num_classes, int):
-                self.label_emb = nn.Embedding(num_classes, time_embed_dim)
+                self.label_emb = ops.Embedding(num_classes, time_embed_dim)
             elif self.num_classes == "continuous":
                 print("setting up linear c_adm embedding layer")
-                self.label_emb = nn.Linear(1, time_embed_dim)
+                self.label_emb = ops.Linear(1, time_embed_dim)
             elif self.num_classes == "sequential":
                 assert adm_in_channels is not None
                 self.label_emb = nn.Sequential(

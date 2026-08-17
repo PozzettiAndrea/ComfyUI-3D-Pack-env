@@ -73,6 +73,13 @@ from diffusers.utils.import_utils import is_xformers_available
 from .transformer_mv2d import XFormersMVAttnProcessor, MVAttnProcessor
 from .refunet import ReferenceOnlyAttnProc
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -345,7 +352,7 @@ class UNetMV2DRefModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
-        self.conv_in = nn.Conv2d(
+        self.conv_in = ops.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
         )
 
@@ -387,7 +394,7 @@ class UNetMV2DRefModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             )
 
         if encoder_hid_dim_type == "text_proj":
-            self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
+            self.encoder_hid_proj = ops.Linear(encoder_hid_dim, cross_attention_dim)
         elif encoder_hid_dim_type == "text_image_proj":
             # image_embed_dim DOESN'T have to be `cross_attention_dim`. To not clutter the __init__ too much
             # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
@@ -412,7 +419,7 @@ class UNetMV2DRefModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
-            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+            self.class_embedding = ops.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=act_fn)
         elif class_embed_type == "identity":
@@ -435,7 +442,7 @@ class UNetMV2DRefModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 raise ValueError(
                     "`class_embed_type`: 'simple_projection' requires `projection_class_embeddings_input_dim` be set"
                 )
-            self.class_embedding = nn.Linear(projection_class_embeddings_input_dim, time_embed_dim)
+            self.class_embedding = ops.Linear(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
 
@@ -473,9 +480,9 @@ class UNetMV2DRefModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             self.time_embed_act = get_activation(time_embedding_act_fn)
 
         self.camera_embedding = nn.Sequential(
-            nn.Linear(camera_input_dim, time_embed_dim),
+            ops.Linear(camera_input_dim, time_embed_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
+            ops.Linear(time_embed_dim, time_embed_dim),
         )
 
         self.down_blocks = nn.ModuleList([])

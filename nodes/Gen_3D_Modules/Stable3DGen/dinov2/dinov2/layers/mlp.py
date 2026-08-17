@@ -12,6 +12,13 @@ from typing import Callable, Optional
 
 from torch import Tensor, nn
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Mlp(nn.Module):
     def __init__(
@@ -26,9 +33,9 @@ class Mlp(nn.Module):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=bias)
+        self.fc1 = ops.Linear(in_features, hidden_features, bias=bias)
         self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=bias)
+        self.fc2 = ops.Linear(hidden_features, out_features, bias=bias)
         self.drop = nn.Dropout(drop)
 
     def forward(self, x: Tensor) -> Tensor:

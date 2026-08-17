@@ -122,6 +122,13 @@ from torch import nn
 from ..attention_processor import FusedTripoSGAttnProcessor2_0, TripoSGAttnProcessor2_0
 from .modeling_outputs import Transformer1DModelOutput
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -264,7 +271,7 @@ class DiTBlock(nn.Module):
         # 4. Skip Connection
         if skip:
             self.skip_norm = FP32LayerNorm(dim, norm_eps, elementwise_affine=True)
-            self.skip_linear = nn.Linear(2 * dim, dim)
+            self.skip_linear = ops.Linear(2 * dim, dim)
         else:
             self.skip_linear = None
 
@@ -435,7 +442,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.time_proj = TimestepEmbedding(
             timestep_input_dim, time_embed_dim, act_fn="gelu", out_dim=self.inner_dim
         )
-        self.proj_in = nn.Linear(self.config.in_channels, self.inner_dim, bias=True)
+        self.proj_in = ops.Linear(self.config.in_channels, self.inner_dim, bias=True)
 
         self.blocks = nn.ModuleList(
             [
@@ -465,7 +472,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
 
         self.norm_out = LayerNorm(self.inner_dim)
-        self.proj_out = nn.Linear(self.inner_dim, self.out_channels, bias=True)
+        self.proj_out = ops.Linear(self.inner_dim, self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
 

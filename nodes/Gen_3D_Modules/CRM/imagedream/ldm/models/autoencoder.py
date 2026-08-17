@@ -8,6 +8,13 @@ from ..modules.distributions.distributions import DiagonalGaussianDistribution
 from ..util import instantiate_from_config
 from ..modules.ema import LitEma
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class AutoencoderKL(torch.nn.Module):
     def __init__(
@@ -30,8 +37,8 @@ class AutoencoderKL(torch.nn.Module):
         self.decoder = Decoder(**ddconfig)
         self.loss = instantiate_from_config(lossconfig)
         assert ddconfig["double_z"]
-        self.quant_conv = torch.nn.Conv2d(2 * ddconfig["z_channels"], 2 * embed_dim, 1)
-        self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
+        self.quant_conv = ops.Conv2d(2 * ddconfig["z_channels"], 2 * embed_dim, 1)
+        self.post_quant_conv = ops.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
         if colorize_nlabels is not None:
             assert type(colorize_nlabels) == int

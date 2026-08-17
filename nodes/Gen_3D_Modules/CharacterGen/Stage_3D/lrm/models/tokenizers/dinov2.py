@@ -52,6 +52,13 @@ import xformers
 from ..transformers.attention import MemoryEfficientAttentionMixin
 from ...utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 logger = logging.get_logger(__name__)
 
@@ -199,7 +206,7 @@ class Dinov2PatchEmbeddings(nn.Module):
         self.num_channels = num_channels
         self.num_patches = num_patches
 
-        self.projection = nn.Conv2d(
+        self.projection = ops.Conv2d(
             num_channels, hidden_size, kernel_size=patch_size, stride=patch_size
         )
 
@@ -233,13 +240,13 @@ class Dinov2SelfAttention(nn.Module):
         self.all_head_size = self.num_attention_heads * self.attention_head_size
         self.attention_probs_dropout_prob = config.attention_probs_dropout_prob
 
-        self.query = nn.Linear(
+        self.query = ops.Linear(
             config.hidden_size, self.all_head_size, bias=config.qkv_bias
         )
-        self.key = nn.Linear(
+        self.key = ops.Linear(
             config.hidden_size, self.all_head_size, bias=config.qkv_bias
         )
-        self.value = nn.Linear(
+        self.value = ops.Linear(
             config.hidden_size, self.all_head_size, bias=config.qkv_bias
         )
 
@@ -343,7 +350,7 @@ class Dinov2SelfOutput(nn.Module):
 
     def __init__(self, config: Dinov2Config) -> None:
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense = ops.Linear(config.hidden_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(
@@ -462,12 +469,12 @@ class Dinov2MLP(nn.Module):
         super().__init__()
         in_features = out_features = config.hidden_size
         hidden_features = int(config.hidden_size * config.mlp_ratio)
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=True)
+        self.fc1 = ops.Linear(in_features, hidden_features, bias=True)
         if isinstance(config.hidden_act, str):
             self.activation = ACT2FN[config.hidden_act]
         else:
             self.activation = config.hidden_act
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=True)
+        self.fc2 = ops.Linear(hidden_features, out_features, bias=True)
 
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
         hidden_state = self.fc1(hidden_state)
@@ -483,8 +490,8 @@ class Dinov2SwiGLUFFN(nn.Module):
         hidden_features = int(config.hidden_size * config.mlp_ratio)
         hidden_features = (int(hidden_features * 2 / 3) + 7) // 8 * 8
 
-        self.weights_in = nn.Linear(in_features, 2 * hidden_features, bias=True)
-        self.weights_out = nn.Linear(hidden_features, out_features, bias=True)
+        self.weights_in = ops.Linear(in_features, 2 * hidden_features, bias=True)
+        self.weights_out = ops.Linear(hidden_features, out_features, bias=True)
 
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
         hidden_state = self.weights_in(hidden_state)
@@ -499,7 +506,7 @@ class Dinov2Layer(nn.Module, MemoryEfficientAttentionMixin):
     def __init__(self, config: Dinov2Config) -> None:
         super().__init__()
 
-        self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.norm1 = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.norm1_modulation = None
         self.attention = Dinov2Attention(config)
         self.layer_scale1 = Dinov2LayerScale(config)
@@ -509,7 +516,7 @@ class Dinov2Layer(nn.Module, MemoryEfficientAttentionMixin):
             else nn.Identity()
         )
 
-        self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.norm2 = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.norm2_modulation = None
 
         if config.use_swiglu_ffn:
@@ -763,7 +770,7 @@ class Dinov2Model(Dinov2PreTrainedModel, MemoryEfficientAttentionMixin):
         self.embeddings = Dinov2Embeddings(config)
         self.encoder = Dinov2Encoder(config)
 
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -775,7 +782,7 @@ class Dinov2Model(Dinov2PreTrainedModel, MemoryEfficientAttentionMixin):
         if extra_input_channels == 0:
             return
         conv_old = self.embeddings.patch_embeddings.projection
-        conv_new = nn.Conv2d(
+        conv_new = ops.Conv2d(
             self.config.num_channels + extra_input_channels,
             self.config.hidden_size,
             kernel_size=self.config.patch_size,
@@ -885,7 +892,7 @@ class Dinov2ForImageClassification(Dinov2PreTrainedModel):
 
         # Classifier head
         self.classifier = (
-            nn.Linear(config.hidden_size * 2, config.num_labels)
+            ops.Linear(config.hidden_size * 2, config.num_labels)
             if config.num_labels > 0
             else nn.Identity()
         )
@@ -991,7 +998,7 @@ class Dinov2Backbone(Dinov2PreTrainedModel, BackboneMixin):
         self.embeddings = Dinov2Embeddings(config)
         self.encoder = Dinov2Encoder(config)
 
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1117,7 +1124,7 @@ class CustomPatchEmbeddings(nn.Module):
         self.num_channels = num_channels
         self.num_patches = num_patches
 
-        self.projection = nn.Conv2d(
+        self.projection = ops.Conv2d(
             num_channels, hidden_size, kernel_size=patch_size, stride=patch_size
         )
 

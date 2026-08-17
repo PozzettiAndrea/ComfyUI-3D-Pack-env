@@ -4,6 +4,13 @@ import torch.nn as nn
 from ..attention import MultiHeadAttention
 from ..norm import LayerNorm32
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class AbsolutePositionEmbedder(nn.Module):
     """
@@ -50,9 +57,9 @@ class FeedForwardNet(nn.Module):
     def __init__(self, channels: int, mlp_ratio: float = 4.0):
         super().__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(channels, int(channels * mlp_ratio)),
+            ops.Linear(channels, int(channels * mlp_ratio)),
             nn.GELU(approximate="tanh"),
-            nn.Linear(int(channels * mlp_ratio), channels),
+            ops.Linear(int(channels * mlp_ratio), channels),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -17,6 +17,13 @@ import xformers.ops
 
 from kiui.cam import orbit_camera
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 def get_camera(
     num_frames, elevation=15, azimuth_start=0, azimuth_span=360, blender_coord=True, extra_view=False,
 ):
@@ -81,11 +88,11 @@ def conv_nd(dims, *args, **kwargs):
     Create a 1D, 2D, or 3D convolution module.
     """
     if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
+        return ops.Conv1d(*args, **kwargs)
     elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
+        return ops.Conv2d(*args, **kwargs)
     elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
+        return ops.Conv3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
 
@@ -111,7 +118,7 @@ def default(val, d):
 class GEGLU(nn.Module):
     def __init__(self, dim_in, dim_out):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = ops.Linear(dim_in, dim_out * 2)
 
     def forward(self, x):
         x, gate = self.proj(x).chunk(2, dim=-1)
@@ -124,13 +131,13 @@ class FeedForward(nn.Module):
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
         project_in = (
-            nn.Sequential(nn.Linear(dim, inner_dim), nn.GELU())
+            nn.Sequential(ops.Linear(dim, inner_dim), nn.GELU())
             if not glu
             else GEGLU(dim, inner_dim)
         )
 
         self.net = nn.Sequential(
-            project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out)
+            project_in, nn.Dropout(dropout), ops.Linear(inner_dim, dim_out)
         )
 
     def forward(self, x):
@@ -161,15 +168,15 @@ class MemoryEfficientCrossAttention(nn.Module):
         self.ip_weight = ip_weight
 
         if self.ip_dim > 0:
-            self.to_k_ip = nn.Linear(context_dim, inner_dim, bias=False)
-            self.to_v_ip = nn.Linear(context_dim, inner_dim, bias=False)
+            self.to_k_ip = ops.Linear(context_dim, inner_dim, bias=False)
+            self.to_v_ip = ops.Linear(context_dim, inner_dim, bias=False)
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = ops.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = ops.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = ops.Linear(context_dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)
+            ops.Linear(inner_dim, query_dim), nn.Dropout(dropout)
         )
         self.attention_op: Optional[Any] = None
 
@@ -260,9 +267,9 @@ class BasicTransformerBlock3D(nn.Module):
             ip_dim=ip_dim,
             ip_weight=ip_weight,
         ) 
-        self.norm1 = nn.LayerNorm(dim)
-        self.norm2 = nn.LayerNorm(dim)
-        self.norm3 = nn.LayerNorm(dim)
+        self.norm1 = ops.LayerNorm(dim)
+        self.norm2 = ops.LayerNorm(dim)
+        self.norm3 = ops.LayerNorm(dim)
 
     def forward(self, x, context=None, num_frames=1):
         x = rearrange(x, "(b f) l c -> b (f l) c", f=num_frames).contiguous()
@@ -294,8 +301,8 @@ class SpatialTransformer3D(nn.Module):
         self.in_channels = in_channels
 
         inner_dim = n_heads * d_head
-        self.norm = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
-        self.proj_in = nn.Linear(in_channels, inner_dim)
+        self.norm = ops.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+        self.proj_in = ops.Linear(in_channels, inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -312,7 +319,7 @@ class SpatialTransformer3D(nn.Module):
             ]
         )
         
-        self.proj_out = zero_module(nn.Linear(in_channels, inner_dim))
+        self.proj_out = zero_module(ops.Linear(in_channels, inner_dim))
         
 
     def forward(self, x, context=None, num_frames=1):
@@ -340,12 +347,12 @@ class PerceiverAttention(nn.Module):
         self.heads = heads
         inner_dim = dim_head * heads
 
-        self.norm1 = nn.LayerNorm(dim)
-        self.norm2 = nn.LayerNorm(dim)
+        self.norm1 = ops.LayerNorm(dim)
+        self.norm2 = ops.LayerNorm(dim)
 
-        self.to_q = nn.Linear(dim, inner_dim, bias=False)
-        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
-        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+        self.to_q = ops.Linear(dim, inner_dim, bias=False)
+        self.to_kv = ops.Linear(dim, inner_dim * 2, bias=False)
+        self.to_out = ops.Linear(inner_dim, dim, bias=False)
 
     def forward(self, x, latents):
         """
@@ -397,9 +404,9 @@ class Resampler(nn.Module):
     ):
         super().__init__()
         self.latents = nn.Parameter(torch.randn(1, num_queries, dim) / dim ** 0.5)
-        self.proj_in = nn.Linear(embedding_dim, dim)
-        self.proj_out = nn.Linear(dim, output_dim)
-        self.norm_out = nn.LayerNorm(output_dim)
+        self.proj_in = ops.Linear(embedding_dim, dim)
+        self.proj_out = ops.Linear(dim, output_dim)
+        self.norm_out = ops.LayerNorm(output_dim)
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -408,10 +415,10 @@ class Resampler(nn.Module):
                     [
                         PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
                         nn.Sequential(
-                            nn.LayerNorm(dim),
-                            nn.Linear(dim, dim * ff_mult, bias=False),
+                            ops.LayerNorm(dim),
+                            ops.Linear(dim, dim * ff_mult, bias=False),
                             nn.GELU(),
-                            nn.Linear(dim * ff_mult, dim, bias=False),
+                            ops.Linear(dim * ff_mult, dim, bias=False),
                         )
                     ]
                 )
@@ -548,7 +555,7 @@ class ResBlock(nn.Module):
         self.use_scale_shift_norm = use_scale_shift_norm
 
         self.in_layers = nn.Sequential(
-            nn.GroupNorm(32, channels),
+            ops.GroupNorm(32, channels),
             nn.SiLU(),
             conv_nd(dims, channels, self.out_channels, 3, padding=1),
         )
@@ -566,13 +573,13 @@ class ResBlock(nn.Module):
 
         self.emb_layers = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(
+            ops.Linear(
                 emb_channels,
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
             ),
         )
         self.out_layers = nn.Sequential(
-            nn.GroupNorm(32, self.out_channels),
+            ops.GroupNorm(32, self.out_channels),
             nn.SiLU(),
             nn.Dropout(p=dropout),
             zero_module(
@@ -742,32 +749,32 @@ class MultiViewUNetModel(ModelMixin, ConfigMixin):
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
-            nn.Linear(model_channels, time_embed_dim),
+            ops.Linear(model_channels, time_embed_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
+            ops.Linear(time_embed_dim, time_embed_dim),
         )
 
         if camera_dim is not None:
             time_embed_dim = model_channels * 4
             self.camera_embed = nn.Sequential(
-                nn.Linear(camera_dim, time_embed_dim),
+                ops.Linear(camera_dim, time_embed_dim),
                 nn.SiLU(),
-                nn.Linear(time_embed_dim, time_embed_dim),
+                ops.Linear(time_embed_dim, time_embed_dim),
             )
 
         if self.num_classes is not None:
             if isinstance(self.num_classes, int):
-                self.label_emb = nn.Embedding(self.num_classes, time_embed_dim)
+                self.label_emb = ops.Embedding(self.num_classes, time_embed_dim)
             elif self.num_classes == "continuous":
                 # print("setting up linear c_adm embedding layer")
-                self.label_emb = nn.Linear(1, time_embed_dim)
+                self.label_emb = ops.Linear(1, time_embed_dim)
             elif self.num_classes == "sequential":
                 assert adm_in_channels is not None
                 self.label_emb = nn.Sequential(
                     nn.Sequential(
-                        nn.Linear(adm_in_channels, time_embed_dim),
+                        ops.Linear(adm_in_channels, time_embed_dim),
                         nn.SiLU(),
-                        nn.Linear(time_embed_dim, time_embed_dim),
+                        ops.Linear(time_embed_dim, time_embed_dim),
                     )
                 )
             else:
@@ -930,13 +937,13 @@ class MultiViewUNetModel(ModelMixin, ConfigMixin):
                 self._feature_size += ch
 
         self.out = nn.Sequential(
-            nn.GroupNorm(32, ch),
+            ops.GroupNorm(32, ch),
             nn.SiLU(),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
         if self.predict_codebook_ids:
             self.id_predictor = nn.Sequential(
-                nn.GroupNorm(32, ch),
+                ops.GroupNorm(32, ch),
                 conv_nd(dims, model_channels, n_embed, 1),
                 # nn.LogSoftmax(dim=1)  # change to cross_entropy and produce non-normalized logits
             )

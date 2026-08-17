@@ -6,6 +6,13 @@ from torch import nn, einsum
 from einops import rearrange, repeat
 import numpy as np
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 FLASH_IS_AVAILABLE = XFORMERS_IS_AVAILBLE = False
 try:
     from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
@@ -95,7 +102,7 @@ class CheckpointFunction(torch.autograd.Function):
 class GEGLU(nn.Module):
     def __init__(self, dim_in, dim_out):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = ops.Linear(dim_in, dim_out * 2)
 
     def forward(self, x):
         x, gate = self.proj(x).chunk(2, dim=-1)
@@ -108,14 +115,14 @@ class FeedForward(nn.Module):
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
         project_in = nn.Sequential(
-            nn.Linear(dim, inner_dim),
+            ops.Linear(dim, inner_dim),
             nn.GELU()
         ) if not glu else GEGLU(dim, inner_dim)
 
         self.net = nn.Sequential(
             project_in,
             nn.Dropout(dropout),
-            nn.Linear(inner_dim, dim_out)
+            ops.Linear(inner_dim, dim_out)
         )
 
     def forward(self, x):
@@ -132,7 +139,7 @@ def zero_module(module):
 
 
 def Normalize(in_channels):
-    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+    return ops.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class LinearAttention(nn.Module):
@@ -140,8 +147,8 @@ class LinearAttention(nn.Module):
         super().__init__()
         self.heads = heads
         hidden_dim = dim_head * heads
-        self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias = False)
-        self.to_out = nn.Conv2d(hidden_dim, dim, 1)
+        self.to_qkv = ops.Conv2d(dim, hidden_dim * 3, 1, bias = False)
+        self.to_out = ops.Conv2d(hidden_dim, dim, 1)
 
     def forward(self, x):
         b, c, h, w = x.shape
@@ -160,22 +167,22 @@ class SpatialSelfAttention(nn.Module):
         self.in_channels = in_channels
 
         self.norm = Normalize(in_channels)
-        self.q = torch.nn.Conv2d(in_channels,
+        self.q = ops.Conv2d(in_channels,
                                  in_channels,
                                  kernel_size=1,
                                  stride=1,
                                  padding=0)
-        self.k = torch.nn.Conv2d(in_channels,
+        self.k = ops.Conv2d(in_channels,
                                  in_channels,
                                  kernel_size=1,
                                  stride=1,
                                  padding=0)
-        self.v = torch.nn.Conv2d(in_channels,
+        self.v = ops.Conv2d(in_channels,
                                  in_channels,
                                  kernel_size=1,
                                  stride=1,
                                  padding=0)
-        self.proj_out = torch.nn.Conv2d(in_channels,
+        self.proj_out = ops.Conv2d(in_channels,
                                         in_channels,
                                         kernel_size=1,
                                         stride=1,
@@ -214,12 +221,12 @@ class CrossAttention(nn.Module):
         context_dim = default(context_dim, query_dim)
         self.scale = dim_head ** -0.5
         self.heads = heads
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = ops.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = ops.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = ops.Linear(context_dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim),
+            ops.Linear(inner_dim, query_dim),
             nn.Dropout(dropout)
         )
 
@@ -253,11 +260,11 @@ class FlashAttention(nn.Module):
         self.scale = dim_head ** -0.5
         self.heads = heads
         self.dropout = dropout
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = ops.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = ops.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = ops.Linear(context_dim, inner_dim, bias=False)
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim),
+            ops.Linear(inner_dim, query_dim),
             nn.Dropout(dropout)
         )
 
@@ -285,11 +292,11 @@ class MemoryEfficientCrossAttention(nn.Module):
         self.heads = heads
         self.dim_head = dim_head
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = ops.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = ops.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = ops.Linear(context_dim, inner_dim, bias=False)
 
-        self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
+        self.to_out = nn.Sequential(ops.Linear(inner_dim, query_dim), nn.Dropout(dropout))
         self.attention_op: Optional[Any] = None
 
     def forward(self, x, context=None, mask=None):
@@ -367,7 +374,7 @@ class AdaNorm(nn.Module):
         super().__init__()
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(dim, 2 * dim, bias=True)
+            ops.Linear(dim, 2 * dim, bias=True)
         )
         self.norm = Fp32LayerNorm(dim, elementwise_affine=False, eps=1e-6)
 

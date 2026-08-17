@@ -7,6 +7,13 @@ from inspect import isfunction
 from collections import namedtuple
 from einops import rearrange, repeat, reduce
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 # constants
 
 DEFAULT_DIM_HEAD = 64
@@ -25,7 +32,7 @@ LayerIntermediates = namedtuple('Intermediates', [
 class AbsolutePositionalEmbedding(nn.Module):
     def __init__(self, dim, max_seq_len):
         super().__init__()
-        self.emb = nn.Embedding(max_seq_len, dim)
+        self.emb = ops.Embedding(max_seq_len, dim)
         self.init_()
 
     def init_(self):
@@ -184,7 +191,7 @@ class GRUGating(nn.Module):
 class GEGLU(nn.Module):
     def __init__(self, dim_in, dim_out):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = ops.Linear(dim_in, dim_out * 2)
 
     def forward(self, x):
         x, gate = self.proj(x).chunk(2, dim=-1)
@@ -197,14 +204,14 @@ class FeedForward(nn.Module):
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
         project_in = nn.Sequential(
-            nn.Linear(dim, inner_dim),
+            ops.Linear(dim, inner_dim),
             nn.GELU()
         ) if not glu else GEGLU(dim, inner_dim)
 
         self.net = nn.Sequential(
             project_in,
             nn.Dropout(dropout),
-            nn.Linear(inner_dim, dim_out)
+            ops.Linear(inner_dim, dim_out)
         )
 
     def forward(self, x):
@@ -237,9 +244,9 @@ class Attention(nn.Module):
 
         inner_dim = dim_head * heads
 
-        self.to_q = nn.Linear(dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(dim, inner_dim, bias=False)
+        self.to_q = ops.Linear(dim, inner_dim, bias=False)
+        self.to_k = ops.Linear(dim, inner_dim, bias=False)
+        self.to_v = ops.Linear(dim, inner_dim, bias=False)
         self.dropout = nn.Dropout(dropout)
 
         # talking heads
@@ -263,7 +270,7 @@ class Attention(nn.Module):
 
         # attention on attention
         self.attn_on_attn = on_attn
-        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim * 2), nn.GLU()) if on_attn else nn.Linear(inner_dim, dim)
+        self.to_out = nn.Sequential(ops.Linear(inner_dim, dim * 2), nn.GLU()) if on_attn else ops.Linear(inner_dim, dim)
 
     def forward(
             self,
@@ -569,18 +576,18 @@ class TransformerWrapper(nn.Module):
         self.max_mem_len = max_mem_len
         self.num_tokens = num_tokens
 
-        self.token_emb = nn.Embedding(num_tokens, emb_dim)
+        self.token_emb = ops.Embedding(num_tokens, emb_dim)
         self.pos_emb = AbsolutePositionalEmbedding(emb_dim, max_seq_len) if (
                     use_pos_emb and not attn_layers.has_pos_emb) else always(0)
         self.emb_dropout = nn.Dropout(emb_dropout)
 
-        self.project_emb = nn.Linear(emb_dim, dim) if emb_dim != dim else nn.Identity()
+        self.project_emb = ops.Linear(emb_dim, dim) if emb_dim != dim else nn.Identity()
         self.attn_layers = attn_layers
-        self.norm = nn.LayerNorm(dim)
+        self.norm = ops.LayerNorm(dim)
 
         self.init_()
 
-        self.to_logits = nn.Linear(dim, num_tokens) if not tie_embedding else lambda t: t @ self.token_emb.weight.t()
+        self.to_logits = ops.Linear(dim, num_tokens) if not tie_embedding else lambda t: t @ self.token_emb.weight.t()
 
         # memory tokens (like [cls]) from Memory Transformers paper
         num_memory_tokens = default(num_memory_tokens, 0)

@@ -20,6 +20,13 @@ from torch.nn.init import trunc_normal_
 from ..layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlockMod as BlockMod
 from ....attention import AdaNorm
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 logger = logging.getLogger("dinov2")
 
 
@@ -106,9 +113,9 @@ class DinoVisionTransformer(nn.Module):
 
         norm_layer = AdaNorm
         self.cam_embed = nn.Sequential(
-        nn.Linear(cam_cond_dim, pos_emb_dim, bias=True),
+        ops.Linear(cam_cond_dim, pos_emb_dim, bias=True),
         nn.SiLU(),
-        nn.Linear(pos_emb_dim, pos_emb_dim, bias=True))
+        ops.Linear(pos_emb_dim, pos_emb_dim, bias=True))
 
         self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches

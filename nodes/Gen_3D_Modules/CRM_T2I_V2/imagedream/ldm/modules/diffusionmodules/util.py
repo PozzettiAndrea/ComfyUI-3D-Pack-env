@@ -17,6 +17,13 @@ from einops import repeat
 import importlib
 from ......._vendor_paths import import_module as _vendor_import
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 def instantiate_from_config(config):
     if not "target" in config:
@@ -288,11 +295,11 @@ def conv_nd(dims, *args, **kwargs):
     Create a 1D, 2D, or 3D convolution module.
     """
     if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
+        return ops.Conv1d(*args, **kwargs)
     elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
+        return ops.Conv2d(*args, **kwargs)
     elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
+        return ops.Conv3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
 
@@ -300,7 +307,7 @@ def linear(*args, **kwargs):
     """
     Create a linear module.
     """
-    return nn.Linear(*args, **kwargs)
+    return ops.Linear(*args, **kwargs)
 
 
 def avg_pool_nd(dims, *args, **kwargs):

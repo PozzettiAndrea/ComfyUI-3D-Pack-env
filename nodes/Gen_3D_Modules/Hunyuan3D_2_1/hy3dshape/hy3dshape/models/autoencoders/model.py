@@ -36,6 +36,13 @@ from .surface_extractors import MCSurfaceExtractor, SurfaceExtractors
 from .volume_decoders import VanillaVolumeDecoder, FlashVDMVolumeDecoding, HierarchicalVolumeDecoding
 from ...utils import logger, synchronize_timer, smart_load_model
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class DiagonalGaussianDistribution(object):
     def __init__(self, parameters: Union[torch.Tensor, List[torch.Tensor]], deterministic=False, feat_dim=1):
@@ -283,8 +290,8 @@ class ShapeVAE(VectsetVAE):
             qk_norm=qk_norm
         )
 
-        self.pre_kl = nn.Linear(width, embed_dim * 2)
-        self.post_kl = nn.Linear(embed_dim, width)
+        self.pre_kl = ops.Linear(width, embed_dim * 2)
+        self.post_kl = ops.Linear(embed_dim, width)
 
         self.transformer = Transformer(
             n_ctx=num_latents,

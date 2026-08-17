@@ -9,6 +9,13 @@ from .core.unet import UNet
 from .core.options import Options
 from .core.gs import GaussianRenderer
 from .core.utils import get_rays
+
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
         
 class LargeMultiviewGaussianModel(nn.Module):
     def __init__(
@@ -30,7 +37,7 @@ class LargeMultiviewGaussianModel(nn.Module):
         )
 
         # last conv
-        self.conv = nn.Conv2d(14, 14, kernel_size=1) # NOTE: maybe remove it if train again
+        self.conv = ops.Conv2d(14, 14, kernel_size=1) # NOTE: maybe remove it if train again
 
         # Gaussian Renderer
         self.gs = GaussianRenderer(opt)

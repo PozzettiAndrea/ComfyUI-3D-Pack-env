@@ -14,6 +14,13 @@ from torch import Tensor
 from torch import nn
 from .utils import setup_logger
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 setup_logger('', logging.INFO, [logging.INFO, logging.WARNING], [logging.ERROR, logging.CRITICAL], logging.Formatter('%(message)s'))
 
 XFORMERS_ENABLED = os.environ.get("XFORMERS_DISABLED") is None
@@ -45,9 +52,9 @@ class Attention(nn.Module):
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = ops.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim, bias=proj_bias)
+        self.proj = ops.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -105,11 +112,11 @@ class CrossAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
 
-        self.to_q = nn.Linear(dim_q, dim, bias=qkv_bias)
-        self.to_k = nn.Linear(dim_k, dim, bias=qkv_bias)
-        self.to_v = nn.Linear(dim_v, dim, bias=qkv_bias)
+        self.to_q = ops.Linear(dim_q, dim, bias=qkv_bias)
+        self.to_k = ops.Linear(dim_k, dim, bias=qkv_bias)
+        self.to_v = ops.Linear(dim_v, dim, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim, bias=proj_bias)
+        self.proj = ops.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:

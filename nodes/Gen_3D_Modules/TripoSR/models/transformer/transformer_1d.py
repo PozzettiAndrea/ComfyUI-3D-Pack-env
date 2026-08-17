@@ -46,6 +46,13 @@ from torch import nn
 from ...utils import BaseModule
 from .basic_transformer_block import BasicTransformerBlock
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Transformer1D(BaseModule):
     @dataclass
@@ -79,7 +86,7 @@ class Transformer1D(BaseModule):
         # 2. Define input layers
         self.in_channels = self.cfg.in_channels
 
-        self.norm = torch.nn.GroupNorm(
+        self.norm = ops.GroupNorm(
             num_groups=self.cfg.norm_num_groups,
             num_channels=self.cfg.in_channels,
             eps=1e-6,

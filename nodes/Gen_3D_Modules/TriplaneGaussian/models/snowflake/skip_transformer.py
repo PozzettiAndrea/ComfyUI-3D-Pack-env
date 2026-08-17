@@ -5,31 +5,38 @@ import torch
 from torch import nn, einsum
 from .utils import MLP_Res, grouping_operation, query_knn
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class SkipTransformer(nn.Module):
     def __init__(self, in_channel, dim=256, n_knn=16, pos_hidden_dim=64, attn_hidden_multiplier=4):
         super(SkipTransformer, self).__init__()
         self.mlp_v = MLP_Res(in_dim=in_channel*2, hidden_dim=in_channel, out_dim=in_channel)
         self.n_knn = n_knn
-        self.conv_key = nn.Conv1d(in_channel, dim, 1)
-        self.conv_query = nn.Conv1d(in_channel, dim, 1)
-        self.conv_value = nn.Conv1d(in_channel, dim, 1)
+        self.conv_key = ops.Conv1d(in_channel, dim, 1)
+        self.conv_query = ops.Conv1d(in_channel, dim, 1)
+        self.conv_value = ops.Conv1d(in_channel, dim, 1)
 
         self.pos_mlp = nn.Sequential(
-            nn.Conv2d(3, pos_hidden_dim, 1),
+            ops.Conv2d(3, pos_hidden_dim, 1),
             nn.BatchNorm2d(pos_hidden_dim),
             nn.ReLU(),
-            nn.Conv2d(pos_hidden_dim, dim, 1)
+            ops.Conv2d(pos_hidden_dim, dim, 1)
         )
 
         self.attn_mlp = nn.Sequential(
-            nn.Conv2d(dim, dim * attn_hidden_multiplier, 1),
+            ops.Conv2d(dim, dim * attn_hidden_multiplier, 1),
             nn.BatchNorm2d(dim * attn_hidden_multiplier),
             nn.ReLU(),
-            nn.Conv2d(dim * attn_hidden_multiplier, dim, 1)
+            ops.Conv2d(dim * attn_hidden_multiplier, dim, 1)
         )
 
-        self.conv_end = nn.Conv1d(dim, in_channel, 1)
+        self.conv_end = ops.Conv1d(dim, in_channel, 1)
 
     def forward(self, pos, key, query, include_self=True):
         """

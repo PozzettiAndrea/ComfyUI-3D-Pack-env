@@ -9,6 +9,13 @@ from dataclasses import dataclass, field
 from diffusers.loaders import IPAdapterMixin
 from .attention_processors import add_extra_processor, switch_extra_processor, add_multiview_processor, switch_multiview_processor, add_switch, change_switch
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 @dataclass
 class AttnConfig:
     """        
@@ -215,7 +222,7 @@ class ConfigurableUNet2DConditionModel(Configurable, IPAdapterMixin):
             if self.unet.config.in_channels != 8:
                 self.unet.register_to_config(in_channels=self.unet.config.in_channels * 2)
                 # repeate unet.conv_in weight twice
-                doubled_conv_in = torch.nn.Conv2d(self.unet.conv_in.in_channels * 2, self.unet.conv_in.out_channels, self.unet.conv_in.kernel_size, self.unet.conv_in.stride, self.unet.conv_in.padding)
+                doubled_conv_in = ops.Conv2d(self.unet.conv_in.in_channels * 2, self.unet.conv_in.out_channels, self.unet.conv_in.kernel_size, self.unet.conv_in.stride, self.unet.conv_in.padding)
                 doubled_conv_in.weight.data = torch.cat([self.unet.conv_in.weight.data, torch.zeros_like(self.unet.conv_in.weight.data)], dim=1)
                 doubled_conv_in.bias.data = self.unet.conv_in.bias.data
                 self.unet.conv_in = doubled_conv_in

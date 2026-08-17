@@ -16,6 +16,13 @@ import xatlas
 
 from .....mesh_processer.mesh import Mesh
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Dummy:
     pass
@@ -50,9 +57,9 @@ class ConvolutionalReconstructionModel(nn.Module):
 
         if self.geo_type == "flex":
             self.weightMlp = nn.Sequential(
-                            nn.Linear(mlp_chnl_s * 32 * 8, 512),
+                            ops.Linear(mlp_chnl_s * 32 * 8, 512),
                             nn.SiLU(),
-                            nn.Linear(512, 21))         
+                            ops.Linear(512, 21))         
             
         self.sdfMlp = SdfMlp(mlp_chnl_s * 32, 512, bias=self.arch.mlp_bias) 
         self.rgbMlp = RgbMlp(mlp_chnl_s * 32, 512, bias=self.arch.mlp_bias)

@@ -6,6 +6,13 @@ import torch.nn as nn
 from ..utils.base import BaseModule
 from ..utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class LinearCameraEmbedder(BaseModule):
     @dataclass
@@ -18,7 +25,7 @@ class LinearCameraEmbedder(BaseModule):
 
     def configure(self) -> None:
         super().configure()
-        self.linear = nn.Linear(self.cfg.in_channels, self.cfg.out_channels)
+        self.linear = ops.Linear(self.cfg.in_channels, self.cfg.out_channels)
 
     def forward(self, **kwargs):
         cond_tensors = []

@@ -18,6 +18,13 @@ from transformers import ViTImageProcessor
 from einops import rearrange, repeat
 from .dino import ViTModel
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class DinoWrapper(nn.Module):
     """
@@ -27,9 +34,9 @@ class DinoWrapper(nn.Module):
         super().__init__()
         self.model, self.processor = self._build_dino(model_name)
         self.camera_embedder = nn.Sequential(
-            nn.Linear(16, self.model.config.hidden_size, bias=True),
+            ops.Linear(16, self.model.config.hidden_size, bias=True),
             nn.SiLU(),
-            nn.Linear(self.model.config.hidden_size, self.model.config.hidden_size, bias=True)
+            ops.Linear(self.model.config.hidden_size, self.model.config.hidden_size, bias=True)
         )
         if freeze:
             self._freeze()

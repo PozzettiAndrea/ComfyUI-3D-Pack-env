@@ -8,6 +8,13 @@ import torch.nn as nn
 from torch.nn.init import trunc_normal_
 from torch.nn.utils import weight_norm
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class DINOHead(nn.Module):
     def __init__(
@@ -24,7 +31,7 @@ class DINOHead(nn.Module):
         nlayers = max(nlayers, 1)
         self.mlp = _build_mlp(nlayers, in_dim, bottleneck_dim, hidden_dim=hidden_dim, use_bn=use_bn, bias=mlp_bias)
         self.apply(self._init_weights)
-        self.last_layer = weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
+        self.last_layer = weight_norm(ops.Linear(bottleneck_dim, out_dim, bias=False))
         self.last_layer.weight_g.data.fill_(1)
 
     def _init_weights(self, m):
@@ -43,16 +50,16 @@ class DINOHead(nn.Module):
 
 def _build_mlp(nlayers, in_dim, bottleneck_dim, hidden_dim=None, use_bn=False, bias=True):
     if nlayers == 1:
-        return nn.Linear(in_dim, bottleneck_dim, bias=bias)
+        return ops.Linear(in_dim, bottleneck_dim, bias=bias)
     else:
-        layers = [nn.Linear(in_dim, hidden_dim, bias=bias)]
+        layers = [ops.Linear(in_dim, hidden_dim, bias=bias)]
         if use_bn:
             layers.append(nn.BatchNorm1d(hidden_dim))
         layers.append(nn.GELU())
         for _ in range(nlayers - 2):
-            layers.append(nn.Linear(hidden_dim, hidden_dim, bias=bias))
+            layers.append(ops.Linear(hidden_dim, hidden_dim, bias=bias))
             if use_bn:
                 layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(nn.GELU())
-        layers.append(nn.Linear(hidden_dim, bottleneck_dim, bias=bias))
+        layers.append(ops.Linear(hidden_dim, bottleneck_dim, bias=bias))
         return nn.Sequential(*layers)

@@ -5,6 +5,13 @@ from ..attention import MultiHeadAttention
 from ..norm import LayerNorm32
 from .blocks import FeedForwardNet
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class ModulatedTransformerBlock(nn.Module):
     """
@@ -46,7 +53,7 @@ class ModulatedTransformerBlock(nn.Module):
         if not share_mod:
             self.adaLN_modulation = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(channels, 6 * channels, bias=True)
+                ops.Linear(channels, 6 * channels, bias=True)
             )
 
     def _forward(self, x: torch.Tensor, mod: torch.Tensor) -> torch.Tensor:
@@ -126,7 +133,7 @@ class ModulatedTransformerCrossBlock(nn.Module):
         if not share_mod:
             self.adaLN_modulation = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(channels, 6 * channels, bias=True)
+                ops.Linear(channels, 6 * channels, bias=True)
             )
 
     def _forward(self, x: torch.Tensor, mod: torch.Tensor, context: torch.Tensor):

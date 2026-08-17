@@ -8,6 +8,13 @@ from typing import Optional, Any
 
 from .diffusionmodules.util import checkpoint
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 try:
     import xformers
@@ -52,7 +59,7 @@ def init_(tensor):
 class GEGLU(nn.Module):
     def __init__(self, dim_in, dim_out):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = ops.Linear(dim_in, dim_out * 2)
 
     def forward(self, x):
         x, gate = self.proj(x).chunk(2, dim=-1)
@@ -65,13 +72,13 @@ class FeedForward(nn.Module):
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
         project_in = (
-            nn.Sequential(nn.Linear(dim, inner_dim), nn.GELU())
+            nn.Sequential(ops.Linear(dim, inner_dim), nn.GELU())
             if not glu
             else GEGLU(dim, inner_dim)
         )
 
         self.net = nn.Sequential(
-            project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out)
+            project_in, nn.Dropout(dropout), ops.Linear(inner_dim, dim_out)
         )
 
     def forward(self, x):
@@ -88,7 +95,7 @@ def zero_module(module):
 
 
 def Normalize(in_channels):
-    return torch.nn.GroupNorm(
+    return ops.GroupNorm(
         num_groups=32, num_channels=in_channels, eps=1e-6, affine=True
     )
 
@@ -99,16 +106,16 @@ class SpatialSelfAttention(nn.Module):
         self.in_channels = in_channels
 
         self.norm = Normalize(in_channels)
-        self.q = torch.nn.Conv2d(
+        self.q = ops.Conv2d(
             in_channels, in_channels, kernel_size=1, stride=1, padding=0
         )
-        self.k = torch.nn.Conv2d(
+        self.k = ops.Conv2d(
             in_channels, in_channels, kernel_size=1, stride=1, padding=0
         )
-        self.v = torch.nn.Conv2d(
+        self.v = ops.Conv2d(
             in_channels, in_channels, kernel_size=1, stride=1, padding=0
         )
-        self.proj_out = torch.nn.Conv2d(
+        self.proj_out = ops.Conv2d(
             in_channels, in_channels, kernel_size=1, stride=1, padding=0
         )
 
@@ -154,17 +161,17 @@ class MemoryEfficientCrossAttention(nn.Module):
         
         self.with_ip = kwargs.get("with_ip", False)
         if self.with_ip and (context_dim is not None):
-            self.to_k_ip = nn.Linear(context_dim, inner_dim, bias=False)
-            self.to_v_ip = nn.Linear(context_dim, inner_dim, bias=False)
+            self.to_k_ip = ops.Linear(context_dim, inner_dim, bias=False)
+            self.to_v_ip = ops.Linear(context_dim, inner_dim, bias=False)
             self.ip_dim= kwargs.get("ip_dim", 16)
             self.ip_weight = kwargs.get("ip_weight", 1.0)
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = ops.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = ops.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = ops.Linear(context_dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout)
+            ops.Linear(inner_dim, query_dim), nn.Dropout(dropout)
         )
         self.attention_op: Optional[Any] = None
 
@@ -258,9 +265,9 @@ class BasicTransformerBlock(nn.Module):
             dropout=dropout,
             **kwargs
         )  # is self-attn if context is none
-        self.norm1 = nn.LayerNorm(dim)
-        self.norm2 = nn.LayerNorm(dim)
-        self.norm3 = nn.LayerNorm(dim)
+        self.norm1 = ops.LayerNorm(dim)
+        self.norm2 = ops.LayerNorm(dim)
+        self.norm3 = ops.LayerNorm(dim)
         self.checkpoint = checkpoint
 
     def forward(self, x, context=None):
@@ -310,11 +317,11 @@ class SpatialTransformer(nn.Module):
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
         if not use_linear:
-            self.proj_in = nn.Conv2d(
+            self.proj_in = ops.Conv2d(
                 in_channels, inner_dim, kernel_size=1, stride=1, padding=0
             )
         else:
-            self.proj_in = nn.Linear(in_channels, inner_dim)
+            self.proj_in = ops.Linear(in_channels, inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -333,10 +340,10 @@ class SpatialTransformer(nn.Module):
         )
         if not use_linear:
             self.proj_out = zero_module(
-                nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+                ops.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
             )
         else:
-            self.proj_out = zero_module(nn.Linear(in_channels, inner_dim))
+            self.proj_out = zero_module(ops.Linear(in_channels, inner_dim))
         self.use_linear = use_linear
 
     def forward(self, x, context=None):
@@ -405,11 +412,11 @@ class SpatialTransformer3D(nn.Module):
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
         if not use_linear:
-            self.proj_in = nn.Conv2d(
+            self.proj_in = ops.Conv2d(
                 in_channels, inner_dim, kernel_size=1, stride=1, padding=0
             )
         else:
-            self.proj_in = nn.Linear(in_channels, inner_dim)
+            self.proj_in = ops.Linear(in_channels, inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -428,10 +435,10 @@ class SpatialTransformer3D(nn.Module):
         )
         if not use_linear:
             self.proj_out = zero_module(
-                nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+                ops.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
             )
         else:
-            self.proj_out = zero_module(nn.Linear(in_channels, inner_dim))
+            self.proj_out = zero_module(ops.Linear(in_channels, inner_dim))
         self.use_linear = use_linear
 
     def forward(self, x, context=None, num_frames=1):

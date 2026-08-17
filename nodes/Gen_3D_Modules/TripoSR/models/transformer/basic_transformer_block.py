@@ -44,6 +44,13 @@ from torch import nn
 
 from .attention import Attention
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class BasicTransformerBlock(nn.Module):
     r"""
@@ -95,7 +102,7 @@ class BasicTransformerBlock(nn.Module):
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
-        self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+        self.norm1 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -111,7 +118,7 @@ class BasicTransformerBlock(nn.Module):
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            self.norm2 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm2 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
             self.attn2 = Attention(
                 query_dim=dim,
@@ -129,7 +136,7 @@ class BasicTransformerBlock(nn.Module):
             self.attn2 = None
 
         # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+        self.norm3 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.ff = FeedForward(
             dim,
             dropout=dropout,
@@ -271,7 +278,7 @@ class GELU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
+        self.proj = ops.Linear(dim_in, dim_out)
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
@@ -327,7 +334,7 @@ class ApproximateGELU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
+        self.proj = ops.Linear(dim_in, dim_out)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)

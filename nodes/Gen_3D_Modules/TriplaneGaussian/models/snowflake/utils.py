@@ -9,10 +9,17 @@ from torch import nn, einsum
 from pointnet2_ops.pointnet2_utils import furthest_point_sample, \
     gather_operation, ball_query, three_nn, three_interpolate, grouping_operation
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class Conv1d(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size=1, stride=1, if_bn=True, activation_fn=torch.relu):
         super(Conv1d, self).__init__()
-        self.conv = nn.Conv1d(in_channel, out_channel, kernel_size, stride=stride)
+        self.conv = ops.Conv1d(in_channel, out_channel, kernel_size, stride=stride)
         self.if_bn = if_bn
         self.bn = nn.BatchNorm1d(out_channel)
         self.activation_fn = activation_fn
@@ -30,7 +37,7 @@ class Conv1d(nn.Module):
 class Conv2d(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size=(1, 1), stride=(1, 1), if_bn=True, activation_fn=torch.relu):
         super(Conv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride)
+        self.conv = ops.Conv2d(in_channel, out_channel, kernel_size, stride=stride)
         self.if_bn = if_bn
         self.bn = nn.BatchNorm2d(out_channel)
         self.activation_fn = activation_fn
@@ -51,12 +58,12 @@ class MLP(nn.Module):
         layers = []
         last_channel = in_channel
         for out_channel in layer_dims[:-1]:
-            layers.append(nn.Linear(last_channel, out_channel))
+            layers.append(ops.Linear(last_channel, out_channel))
             if bn:
                 layers.append(nn.BatchNorm1d(out_channel))
             layers.append(nn.ReLU())
             last_channel = out_channel
-        layers.append(nn.Linear(last_channel, layer_dims[-1]))
+        layers.append(ops.Linear(last_channel, layer_dims[-1]))
         self.mlp = nn.Sequential(*layers)
 
     def forward(self, inputs):
@@ -68,12 +75,12 @@ class MLP_CONV(nn.Module):
         layers = []
         last_channel = in_channel
         for out_channel in layer_dims[:-1]:
-            layers.append(nn.Conv1d(last_channel, out_channel, 1))
+            layers.append(ops.Conv1d(last_channel, out_channel, 1))
             if bn:
                 layers.append(nn.BatchNorm1d(out_channel))
             layers.append(nn.ReLU())
             last_channel = out_channel
-        layers.append(nn.Conv1d(last_channel, layer_dims[-1], 1))
+        layers.append(ops.Conv1d(last_channel, layer_dims[-1], 1))
         self.mlp = nn.Sequential(*layers)
 
     def forward(self, inputs):
@@ -84,9 +91,9 @@ class MLP_Res(nn.Module):
         super(MLP_Res, self).__init__()
         if hidden_dim is None:
             hidden_dim = in_dim
-        self.conv_1 = nn.Conv1d(in_dim, hidden_dim, 1)
-        self.conv_2 = nn.Conv1d(hidden_dim, out_dim, 1)
-        self.conv_shortcut = nn.Conv1d(in_dim, out_dim, 1)
+        self.conv_1 = ops.Conv1d(in_dim, hidden_dim, 1)
+        self.conv_2 = ops.Conv1d(hidden_dim, out_dim, 1)
+        self.conv_shortcut = ops.Conv1d(in_dim, out_dim, 1)
 
     def forward(self, x):
         """
@@ -400,26 +407,26 @@ class Transformer(nn.Module):
     def __init__(self, in_channel, dim=256, n_knn=16, pos_hidden_dim=64, attn_hidden_multiplier=4):
         super(Transformer, self).__init__()
         self.n_knn = n_knn
-        self.conv_key = nn.Conv1d(dim, dim, 1)
-        self.conv_query = nn.Conv1d(dim, dim, 1)
-        self.conv_value = nn.Conv1d(dim, dim, 1)
+        self.conv_key = ops.Conv1d(dim, dim, 1)
+        self.conv_query = ops.Conv1d(dim, dim, 1)
+        self.conv_value = ops.Conv1d(dim, dim, 1)
 
         self.pos_mlp = nn.Sequential(
-            nn.Conv2d(3, pos_hidden_dim, 1),
+            ops.Conv2d(3, pos_hidden_dim, 1),
             nn.BatchNorm2d(pos_hidden_dim),
             nn.ReLU(),
-            nn.Conv2d(pos_hidden_dim, dim, 1)
+            ops.Conv2d(pos_hidden_dim, dim, 1)
         )
 
         self.attn_mlp = nn.Sequential(
-            nn.Conv2d(dim, dim * attn_hidden_multiplier, 1),
+            ops.Conv2d(dim, dim * attn_hidden_multiplier, 1),
             nn.BatchNorm2d(dim * attn_hidden_multiplier),
             nn.ReLU(),
-            nn.Conv2d(dim * attn_hidden_multiplier, dim, 1)
+            ops.Conv2d(dim * attn_hidden_multiplier, dim, 1)
         )
 
-        self.linear_start = nn.Conv1d(in_channel, dim, 1)
-        self.linear_end = nn.Conv1d(dim, in_channel, 1)
+        self.linear_start = ops.Conv1d(in_channel, dim, 1)
+        self.linear_end = ops.Conv1d(dim, in_channel, 1)
 
     def forward(self, x, pos):
         """feed forward of transformer
@@ -466,11 +473,11 @@ class CouplingLayer(nn.Module):
         self.d = d - (d // 2)
         self.swap = swap
         self.net_s_t = nn.Sequential(
-            nn.Linear(self.d, intermediate_dim),
+            ops.Linear(self.d, intermediate_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(intermediate_dim, intermediate_dim),
+            ops.Linear(intermediate_dim, intermediate_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(intermediate_dim, (d - self.d) * 2),
+            ops.Linear(intermediate_dim, (d - self.d) * 2),
         )
 
     def forward(self, x, logpx=None, reverse=False):
@@ -652,7 +659,7 @@ def inplace_spectral_norm(module, name='weight', dim=None, eps=1e-12):
     Returns:
         The original module with the spectal norm hook
     Example::
-        >>> m = spectral_norm(nn.Linear(20, 40))
+        >>> m = spectral_norm(ops.Linear(20, 40))
         Linear (20 -> 40)
         >>> m.weight_u.size()
         torch.Size([20])
@@ -672,7 +679,7 @@ def remove_spectral_norm(module, name='weight'):
         module (nn.Module): containing module
         name (str, optional): name of weight parameter
     Example:
-        >>> m = spectral_norm(nn.Linear(40, 10))
+        >>> m = spectral_norm(ops.Linear(40, 10))
         >>> remove_spectral_norm(m)
     """
     for k, hook in module._forward_pre_hooks.items():

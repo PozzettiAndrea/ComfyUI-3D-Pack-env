@@ -4,23 +4,30 @@ import torch.nn as nn
 import torch.nn.init as init
 from einops import rearrange
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class PoseGuider(nn.Module):
     def __init__(self, noise_latent_channels=4):
         super(PoseGuider, self).__init__()
 
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=16, kernel_size=4, stride=2, padding=1),
+            ops.Conv2d(in_channels=3, out_channels=16, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=4, stride=2, padding=1),
+            ops.Conv2d(in_channels=16, out_channels=32, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=1),
+            ops.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
+            ops.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
             nn.ReLU()
         )
 
         # Final projection layer
-        self.final_proj = nn.Conv2d(in_channels=128, out_channels=noise_latent_channels, kernel_size=1)
+        self.final_proj = ops.Conv2d(in_channels=128, out_channels=noise_latent_channels, kernel_size=1)
 
         # Initialize layers
         self._initialize_weights()

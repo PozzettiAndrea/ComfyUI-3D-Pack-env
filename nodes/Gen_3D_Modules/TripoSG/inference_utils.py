@@ -9,6 +9,13 @@ import torch.nn.functional as F
 
 from .utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 def generate_dense_grid_points_gpu(bbox_min: torch.Tensor,
                                    bbox_max: torch.Tensor,
                                    octree_depth: int,
@@ -358,7 +365,7 @@ def flash_extract_geometry(
         indexing="ij"
     )
 
-    dilate = nn.Conv3d(1, 1, 3, padding=1, bias=False, device=device, dtype=dtype)
+    dilate = ops.Conv3d(1, 1, 3, padding=1, bias=False, device=device, dtype=dtype)
     dilate.weight = torch.nn.Parameter(torch.ones(dilate.weight.shape, dtype=dtype, device=device))
 
     grid_size = np.array(grid_size)

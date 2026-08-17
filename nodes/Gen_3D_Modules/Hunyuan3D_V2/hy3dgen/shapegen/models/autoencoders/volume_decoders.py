@@ -25,6 +25,13 @@ from .attention_blocks import CrossAttentionDecoder
 from .attention_processors import FlashVDMCrossAttentionProcessor, FlashVDMTopMCrossAttentionProcessor
 from ...utils import logger
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 def extract_near_surface_volume_fn(input_tensor: torch.Tensor, alpha: float):
     device = input_tensor.device
@@ -221,7 +228,7 @@ class HierarchicalVolumeDecoding:
             indexing="ij"
         )
 
-        dilate = nn.Conv3d(1, 1, 3, padding=1, bias=False, device=device, dtype=dtype)
+        dilate = ops.Conv3d(1, 1, 3, padding=1, bias=False, device=device, dtype=dtype)
         dilate.weight = torch.nn.Parameter(torch.ones(dilate.weight.shape, dtype=dtype, device=device))
 
         grid_size = np.array(grid_size)
@@ -334,7 +341,7 @@ class FlashVDMVolumeDecoding:
             indexing="ij"
         )
 
-        dilate = nn.Conv3d(1, 1, 3, padding=1, bias=False, device=device, dtype=dtype)
+        dilate = ops.Conv3d(1, 1, 3, padding=1, bias=False, device=device, dtype=dtype)
         dilate.weight = torch.nn.Parameter(torch.ones(dilate.weight.shape, dtype=dtype, device=device))
 
         grid_size = np.array(grid_size)

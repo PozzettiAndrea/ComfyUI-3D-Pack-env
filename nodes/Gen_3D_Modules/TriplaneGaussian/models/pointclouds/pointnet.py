@@ -8,6 +8,13 @@ from ...utils.base import BaseModule
 from ..networks import ResnetBlockFC
 from ...utils.ops import scale_tensor
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class LocalPoolPointnet(BaseModule):
     ''' PointNet-based encoder network with ResNet blocks for each point.
         Number of input points are fixed.
@@ -36,11 +43,11 @@ class LocalPoolPointnet(BaseModule):
 
     def configure(self) -> None:
         super().configure()
-        self.fc_pos = nn.Linear(self.cfg.input_channels, 2 * self.cfg.hidden_dim)
+        self.fc_pos = ops.Linear(self.cfg.input_channels, 2 * self.cfg.hidden_dim)
         self.blocks = nn.ModuleList([
             ResnetBlockFC(2 * self.cfg.hidden_dim, self.cfg.hidden_dim) for i in range(self.cfg.n_blocks)
         ])
-        self.fc_c = nn.Linear(self.cfg.hidden_dim, self.cfg.c_dim)
+        self.fc_c = ops.Linear(self.cfg.hidden_dim, self.cfg.c_dim)
 
         self.actvn = nn.ReLU()
 

@@ -12,6 +12,13 @@ from torch.amp import custom_bwd, custom_fwd
 
 from .utils import BaseModule, normalize
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class PixelShuffleUpsampleNetwork(BaseModule):
     @dataclass
@@ -35,7 +42,7 @@ class PixelShuffleUpsampleNetwork(BaseModule):
                 in_channels if i != self.cfg.conv_layers - 1 else output_channels
             )
             layers.append(
-                nn.Conv2d(
+                ops.Conv2d(
                     in_channels,
                     cur_out_channels,
                     self.cfg.conv_kernel_size,
@@ -147,14 +154,14 @@ class MaterialMLP(BaseModule):
             head_layers = []
             for i in range(head.n_hidden_layers):
                 head_layers += [
-                    nn.Linear(
+                    ops.Linear(
                         self.cfg.in_channels if i == 0 else self.cfg.n_neurons,
                         self.cfg.n_neurons,
                     ),
                     self.make_activation(self.cfg.activation),
                 ]
             head_layers += [
-                nn.Linear(
+                ops.Linear(
                     self.cfg.n_neurons,
                     head.out_channels,
                 ),

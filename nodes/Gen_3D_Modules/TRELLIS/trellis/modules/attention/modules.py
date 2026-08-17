@@ -4,6 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .full_attn import scaled_dot_product_attention
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class MultiHeadRMSNorm(nn.Module):
     def __init__(self, dim: int, heads: int):
@@ -95,16 +102,16 @@ class MultiHeadAttention(nn.Module):
         self.qk_rms_norm = qk_rms_norm
 
         if self._type == "self":
-            self.to_qkv = nn.Linear(channels, channels * 3, bias=qkv_bias)
+            self.to_qkv = ops.Linear(channels, channels * 3, bias=qkv_bias)
         else:
-            self.to_q = nn.Linear(channels, channels, bias=qkv_bias)
-            self.to_kv = nn.Linear(self.ctx_channels, channels * 2, bias=qkv_bias)
+            self.to_q = ops.Linear(channels, channels, bias=qkv_bias)
+            self.to_kv = ops.Linear(self.ctx_channels, channels * 2, bias=qkv_bias)
             
         if self.qk_rms_norm:
             self.q_rms_norm = MultiHeadRMSNorm(self.head_dim, num_heads)
             self.k_rms_norm = MultiHeadRMSNorm(self.head_dim, num_heads)
             
-        self.to_out = nn.Linear(channels, channels)
+        self.to_out = ops.Linear(channels, channels)
 
         if use_rope:
             self.rope = RotaryPositionEmbedder(channels)

@@ -1,6 +1,13 @@
 import torch
 import torch.nn as nn
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Modulation(nn.Module):
     def __init__(
@@ -15,9 +22,9 @@ class Modulation(nn.Module):
         if single_layer:
             self.linear1 = nn.Identity()
         else:
-            self.linear1 = nn.Linear(condition_dim, condition_dim)
+            self.linear1 = ops.Linear(condition_dim, condition_dim)
 
-        self.linear2 = nn.Linear(condition_dim, embedding_dim * 2)
+        self.linear2 = ops.Linear(condition_dim, embedding_dim * 2)
 
         # Only zero init the last linear layer
         if zero_init:

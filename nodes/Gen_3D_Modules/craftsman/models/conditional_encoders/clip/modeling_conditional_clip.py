@@ -38,13 +38,20 @@ from .modeling_clip import (
     BaseModelOutputWithPooling
 )
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class ModLN(nn.Module):
     def __init__(self, inner_dim: int, mod_dim: int = 32):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(mod_dim, inner_dim * 2),
+            ops.Linear(mod_dim, inner_dim * 2),
         )
 
         for m in self.modules():
@@ -177,9 +184,9 @@ class ConditionalCLIPVisionTransformer(CLIPVisionTransformer):
         embed_dim = config.hidden_size
 
         self.embeddings = CLIPVisionEmbeddings(config)
-        self.pre_layrnorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
+        self.pre_layrnorm = ops.LayerNorm(embed_dim, eps=config.layer_norm_eps)
         self.encoder = ConditionalCLIPEncoder(config)
-        self.post_layernorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
+        self.post_layernorm = ops.LayerNorm(embed_dim, eps=config.layer_norm_eps)
 
     def forward(
         self,
@@ -280,8 +287,8 @@ class ConditionalCLIPModel(CLIPModel):
         self.text_model = CLIPTextTransformer(text_config)
         self.vision_model = ConditionalCLIPVisionTransformer(vision_config)
 
-        self.visual_projection = nn.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
-        self.text_projection = nn.Linear(self.text_embed_dim, self.projection_dim, bias=False)
+        self.visual_projection = ops.Linear(self.vision_embed_dim, self.projection_dim, bias=False)
+        self.text_projection = ops.Linear(self.text_embed_dim, self.projection_dim, bias=False)
         self.logit_scale = nn.Parameter(torch.tensor(self.config.logit_scale_init_value))
 
         # Initialize weights and apply final processing

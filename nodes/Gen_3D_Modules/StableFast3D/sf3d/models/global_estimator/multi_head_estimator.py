@@ -8,6 +8,13 @@ from torch import Tensor
 from ..network import get_activation
 from ..utils import BaseModule
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 @dataclass
 class HeadSpec:
@@ -41,7 +48,7 @@ class MultiHeadEstimator(BaseModule):
         cur_features = self.cfg.triplane_features * 3
         for _ in range(self.cfg.n_layers):
             layers.append(
-                nn.Conv2d(
+                ops.Conv2d(
                     cur_features,
                     self.cfg.hidden_features,
                     kernel_size=3,
@@ -61,14 +68,14 @@ class MultiHeadEstimator(BaseModule):
             head_layers = []
             for i in range(head.n_hidden_layers):
                 head_layers += [
-                    nn.Linear(
+                    ops.Linear(
                         self.cfg.hidden_features,
                         self.cfg.hidden_features,
                     ),
                     self.make_activation(self.cfg.activation),
                 ]
             head_layers += [
-                nn.Linear(
+                ops.Linear(
                     self.cfg.hidden_features,
                     head.out_channels,
                 ),

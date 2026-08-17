@@ -13,6 +13,13 @@ import torch.nn as nn
 from .utils.renderer import ImportanceRenderer
 from .utils.ray_sampler import RaySampler
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class OSGDecoder(nn.Module):
     """
@@ -26,13 +33,13 @@ class OSGDecoder(nn.Module):
                  hidden_dim: int = 64, num_layers: int = 4, activation: nn.Module = nn.ReLU):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(3 * n_features, hidden_dim),
+            ops.Linear(3 * n_features, hidden_dim),
             activation(),
             *itertools.chain(*[[
-                nn.Linear(hidden_dim, hidden_dim),
+                ops.Linear(hidden_dim, hidden_dim),
                 activation(),
             ] for _ in range(num_layers - 2)]),
-            nn.Linear(hidden_dim, 1 + 3),
+            ops.Linear(hidden_dim, 1 + 3),
         )
         # init all bias to zero
         for m in self.modules():

@@ -34,6 +34,13 @@ from torch import Tensor
 from .attention_processors import CrossAttentionProcessor
 from ...utils import logger
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 scaled_dot_product_attention = nn.functional.scaled_dot_product_attention
 
 if os.environ.get('USE_SAGEATTN', '0') == '1':
@@ -183,8 +190,8 @@ class MLP(nn.Module):
     ):
         super().__init__()
         self.width = width
-        self.c_fc = nn.Linear(width, width * expand_ratio)
-        self.c_proj = nn.Linear(width * expand_ratio, output_width if output_width is not None else width)
+        self.c_fc = ops.Linear(width, width * expand_ratio)
+        self.c_proj = ops.Linear(width * expand_ratio, output_width if output_width is not None else width)
         self.gelu = nn.GELU()
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0. else nn.Identity()
 
@@ -244,9 +251,9 @@ class MultiheadCrossAttention(nn.Module):
         self.width = width
         self.heads = heads
         self.data_width = width if data_width is None else data_width
-        self.c_q = nn.Linear(width, width, bias=qkv_bias)
-        self.c_kv = nn.Linear(self.data_width, width * 2, bias=qkv_bias)
-        self.c_proj = nn.Linear(width, width)
+        self.c_q = ops.Linear(width, width, bias=qkv_bias)
+        self.c_kv = ops.Linear(self.data_width, width * 2, bias=qkv_bias)
+        self.c_proj = ops.Linear(width, width)
         self.attention = QKVMultiheadCrossAttention(
             heads=heads,
             n_data=n_data,
@@ -355,8 +362,8 @@ class MultiheadAttention(nn.Module):
         self.n_ctx = n_ctx
         self.width = width
         self.heads = heads
-        self.c_qkv = nn.Linear(width, width * 3, bias=qkv_bias)
-        self.c_proj = nn.Linear(width, width)
+        self.c_qkv = ops.Linear(width, width * 3, bias=qkv_bias)
+        self.c_proj = ops.Linear(width, width)
         self.attention = QKVMultiheadAttention(
             heads=heads,
             n_ctx=n_ctx,
@@ -465,9 +472,9 @@ class CrossAttentionDecoder(nn.Module):
         self.enable_ln_post = enable_ln_post
         self.fourier_embedder = fourier_embedder
         self.downsample_ratio = downsample_ratio
-        self.query_proj = nn.Linear(self.fourier_embedder.out_dim, width)
+        self.query_proj = ops.Linear(self.fourier_embedder.out_dim, width)
         if self.downsample_ratio != 1:
-            self.latents_proj = nn.Linear(width * downsample_ratio, width)
+            self.latents_proj = ops.Linear(width * downsample_ratio, width)
         if self.enable_ln_post == False:
             qk_norm = False
         self.cross_attn_decoder = ResidualCrossAttentionBlock(
@@ -480,8 +487,8 @@ class CrossAttentionDecoder(nn.Module):
         )
 
         if self.enable_ln_post:
-            self.ln_post = nn.LayerNorm(width)
-        self.output_proj = nn.Linear(width, out_channels)
+            self.ln_post = ops.LayerNorm(width)
+        self.output_proj = ops.Linear(width, out_channels)
         self.label_type = label_type
         self.count = 0
 
@@ -558,7 +565,7 @@ class PointCrossAttentionEncoder(nn.Module):
 
         self.fourier_embedder = fourier_embedder
 
-        self.input_proj = nn.Linear(self.fourier_embedder.out_dim + point_feats, width)
+        self.input_proj = ops.Linear(self.fourier_embedder.out_dim + point_feats, width)
         self.cross_attn = ResidualCrossAttentionBlock(
             width=width,
             heads=heads,
@@ -578,7 +585,7 @@ class PointCrossAttentionEncoder(nn.Module):
             )
 
         if use_ln_post:
-            self.ln_post = nn.LayerNorm(width)
+            self.ln_post = ops.LayerNorm(width)
         else:
             self.ln_post = None
 

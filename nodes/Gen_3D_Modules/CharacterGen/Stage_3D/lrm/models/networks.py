@@ -9,6 +9,13 @@ from ..utils.base import BaseModule
 from ..utils.ops import get_activation
 from ..utils.typing import *
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class TriplaneUpsampleNetwork(BaseModule):
     @dataclass
@@ -20,7 +27,7 @@ class TriplaneUpsampleNetwork(BaseModule):
 
     def configure(self) -> None:
         super().configure()
-        self.upsample = nn.ConvTranspose2d(
+        self.upsample = ops.ConvTranspose2d(
             self.cfg.in_channels, self.cfg.out_channels, kernel_size=2, stride=2
         )
 
@@ -105,7 +112,7 @@ class MLP(nn.Module):
         weight_init=None,
         bias_init=None,
     ):
-        layer = nn.Linear(dim_in, dim_out, bias=bias)
+        layer = ops.Linear(dim_in, dim_out, bias=bias)
 
         if weight_init is None:
             pass
@@ -220,7 +227,7 @@ class MultiHeadMLP(BaseModule):
         weight_init=None,
         bias_init=None,
     ):
-        layer = nn.Linear(dim_in, dim_out, bias=bias)
+        layer = ops.Linear(dim_in, dim_out, bias=bias)
 
         if weight_init is None:
             pass

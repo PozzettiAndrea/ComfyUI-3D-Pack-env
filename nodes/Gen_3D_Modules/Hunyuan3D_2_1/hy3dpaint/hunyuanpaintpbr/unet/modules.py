@@ -34,6 +34,13 @@ from .attn_processor import SelfAttnProcessor2_0, RefAttnProcessor2_0, PoseRoPEA
 
 from transformers import AutoImageProcessor, AutoModel
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class Dino_v2(nn.Module):
 
@@ -725,8 +732,8 @@ class ImageProjModel(torch.nn.Module):
         self.generator = None
         self.cross_attention_dim = cross_attention_dim
         self.clip_extra_context_tokens = clip_extra_context_tokens
-        self.proj = torch.nn.Linear(clip_embeddings_dim, self.clip_extra_context_tokens * cross_attention_dim)
-        self.norm = torch.nn.LayerNorm(cross_attention_dim)
+        self.proj = ops.Linear(clip_embeddings_dim, self.clip_extra_context_tokens * cross_attention_dim)
+        self.norm = ops.LayerNorm(cross_attention_dim)
 
     def forward(self, image_embeds):
 
@@ -815,7 +822,7 @@ class UNet2p5DConditionModel(torch.nn.Module):
             config = json.load(file)
         unet = UNet2DConditionModel(**config)
         unet_2p5d = UNet2p5DConditionModel(unet)
-        unet_2p5d.unet.conv_in = torch.nn.Conv2d(
+        unet_2p5d.unet.conv_in = ops.Conv2d(
             12,
             unet.conv_in.out_channels,
             kernel_size=unet.conv_in.kernel_size,

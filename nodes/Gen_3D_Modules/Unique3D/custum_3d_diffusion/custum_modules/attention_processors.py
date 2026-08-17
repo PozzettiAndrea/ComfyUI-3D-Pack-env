@@ -2,9 +2,16 @@ from typing import Any, Dict, Optional
 import torch
 from diffusers.models.attention_processor import Attention
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 def construct_pix2pix_attention(hidden_states_dim, norm_type="none"):
     if norm_type == "layernorm":
-        norm = torch.nn.LayerNorm(hidden_states_dim)
+        norm = ops.LayerNorm(hidden_states_dim)
     else:
         norm = torch.nn.Identity()
     attention = Attention(
@@ -49,7 +56,7 @@ class ExtraAttnProc(torch.nn.Module):
         self.views = views
         self.simple_3d = simple_3d
         if self.with_proj_in and self.enabled:
-            self.in_linear = torch.nn.Linear(self.proj_in_dim, self.target_dim, bias=False)
+            self.in_linear = ops.Linear(self.proj_in_dim, self.target_dim, bias=False)
             if self.target_dim == self.proj_in_dim:
                 self.in_linear.weight.data = torch.eye(proj_in_dim)
         else:

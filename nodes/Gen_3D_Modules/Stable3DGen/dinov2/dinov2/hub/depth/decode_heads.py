@@ -13,6 +13,13 @@ import torch.nn as nn
 
 from .ops import resize
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 # XXX: (Untested) replacement for mmcv.imdenormalize()
 def _imdenormalize(img, mean, std, to_bgr=True):
@@ -98,9 +105,9 @@ class DepthBaseDecodeHead(nn.Module):
             self.bins_strategy = bins_strategy
             self.norm_strategy = norm_strategy
             self.softmax = nn.Softmax(dim=1)
-            self.conv_depth = nn.Conv2d(channels, n_bins, kernel_size=3, padding=1, stride=1)
+            self.conv_depth = ops.Conv2d(channels, n_bins, kernel_size=3, padding=1, stride=1)
         else:
-            self.conv_depth = nn.Conv2d(channels, 1, kernel_size=3, padding=1, stride=1)
+            self.conv_depth = ops.Conv2d(channels, 1, kernel_size=3, padding=1, stride=1)
 
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
@@ -230,9 +237,9 @@ class BNHead(DepthBaseDecodeHead):
         self.upsample = upsample
         # self.bn = nn.SyncBatchNorm(self.in_channels)
         if self.classify:
-            self.conv_depth = nn.Conv2d(self.channels, self.n_bins, kernel_size=1, padding=0, stride=1)
+            self.conv_depth = ops.Conv2d(self.channels, self.n_bins, kernel_size=1, padding=0, stride=1)
         else:
-            self.conv_depth = nn.Conv2d(self.channels, 1, kernel_size=1, padding=0, stride=1)
+            self.conv_depth = ops.Conv2d(self.channels, 1, kernel_size=1, padding=0, stride=1)
 
     def _transform_inputs(self, inputs):
         """Transform inputs for decoder.
@@ -513,11 +520,11 @@ class HeadDepth(nn.Module):
     def __init__(self, features):
         super(HeadDepth, self).__init__()
         self.head = nn.Sequential(
-            nn.Conv2d(features, features // 2, kernel_size=3, stride=1, padding=1),
+            ops.Conv2d(features, features // 2, kernel_size=3, stride=1, padding=1),
             Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
-            nn.Conv2d(features // 2, 32, kernel_size=3, stride=1, padding=1),
+            ops.Conv2d(features // 2, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+            ops.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
         )
 
     def forward(self, x):
@@ -557,14 +564,14 @@ class ReassembleBlocks(nn.Module):
 
         self.resize_layers = nn.ModuleList(
             [
-                nn.ConvTranspose2d(
+                ops.ConvTranspose2d(
                     in_channels=out_channels[0], out_channels=out_channels[0], kernel_size=4, stride=4, padding=0
                 ),
-                nn.ConvTranspose2d(
+                ops.ConvTranspose2d(
                     in_channels=out_channels[1], out_channels=out_channels[1], kernel_size=2, stride=2, padding=0
                 ),
                 nn.Identity(),
-                nn.Conv2d(
+                ops.Conv2d(
                     in_channels=out_channels[3], out_channels=out_channels[3], kernel_size=3, stride=2, padding=1
                 ),
             ]
@@ -572,7 +579,7 @@ class ReassembleBlocks(nn.Module):
         if self.readout_type == "project":
             self.readout_projects = nn.ModuleList()
             for _ in range(len(self.projects)):
-                self.readout_projects.append(nn.Sequential(nn.Linear(2 * in_channels, in_channels), nn.GELU()))
+                self.readout_projects.append(nn.Sequential(ops.Linear(2 * in_channels, in_channels), nn.GELU()))
 
     def forward(self, inputs):
         assert isinstance(inputs, list)

@@ -7,6 +7,13 @@ from torch import nn
 
 from ..utils import BaseModule
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class GEGLU(nn.Module):
     r"""
@@ -19,7 +26,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.proj = ops.Linear(dim_in, dim_out * 2)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
         if gate.device.type != "mps":
@@ -48,11 +55,11 @@ class CrossAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
         kv_dim = dim if not kv_dim else kv_dim
-        self.wq = nn.Linear(dim, dim, bias=qkv_bias)
-        self.wk = nn.Linear(kv_dim, dim, bias=qkv_bias)
-        self.wv = nn.Linear(kv_dim, dim, bias=qkv_bias)
+        self.wq = ops.Linear(dim, dim, bias=qkv_bias)
+        self.wk = ops.Linear(kv_dim, dim, bias=qkv_bias)
+        self.wv = ops.Linear(kv_dim, dim, bias=qkv_bias)
         self.attn_drop = attn_drop
-        self.proj = nn.Linear(dim, dim)
+        self.proj = ops.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x_q, x_kv):
@@ -96,7 +103,7 @@ class FeedForward(nn.Module):
         self.net = nn.ModuleList([])
         self.net.append(act_fn)
         self.net.append(nn.Dropout(dropout))
-        self.net.append(nn.Linear(inner_dim, dim_out))
+        self.net.append(ops.Linear(inner_dim, dim_out))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for module in self.net:
@@ -116,7 +123,7 @@ class BasicBlock(nn.Module):
         ff_drop: float = 0.0,
     ):
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
+        self.norm1 = ops.LayerNorm(dim)
         self.attn1 = CrossAttention(
             dim,
             kv_dim=dim,
@@ -125,7 +132,7 @@ class BasicBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
         )
-        self.norm2 = nn.LayerNorm(dim)
+        self.norm2 = ops.LayerNorm(dim)
         self.attn2 = CrossAttention(
             dim,
             kv_dim=kv_dim,
@@ -134,7 +141,7 @@ class BasicBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
         )
-        self.norm3 = nn.LayerNorm(dim)
+        self.norm3 = ops.LayerNorm(dim)
         self.ff = FeedForward(dim, dropout=ff_drop)
 
     def forward(self, z, x):
@@ -169,13 +176,13 @@ class SingleStreamTransformer(BaseModule):
         inner_dim = self.num_attention_heads * self.attention_head_dim
 
         # Define input layers
-        self.norm = torch.nn.GroupNorm(
+        self.norm = ops.GroupNorm(
             num_groups=self.cfg.norm_num_groups,
             num_channels=self.cfg.in_channels,
             eps=1e-6,
             affine=True,
         )
-        self.proj_in = nn.Linear(self.cfg.in_channels, inner_dim)
+        self.proj_in = ops.Linear(self.cfg.in_channels, inner_dim)
 
         # Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -193,7 +200,7 @@ class SingleStreamTransformer(BaseModule):
         )
 
         # 4. Define output layers
-        self.proj_out = nn.Linear(inner_dim, self.cfg.in_channels)
+        self.proj_out = ops.Linear(inner_dim, self.cfg.in_channels)
 
     def forward(self, hidden_states, encoder_hidden_states=None, **kwargs):
         residual = hidden_states
@@ -227,7 +234,7 @@ class FuseBlock(nn.Module):
         super().__init__()
         self.norm_x_input = norm_x_input
         if self.norm_x_input:
-            self.norm_x = nn.LayerNorm(dim_x)
+            self.norm_x = ops.LayerNorm(dim_x)
         self.attn = CrossAttention(
             dim_z,
             kv_dim=dim_x,
@@ -236,8 +243,8 @@ class FuseBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
         )
-        self.norm_z1 = nn.LayerNorm(dim_z)
-        self.norm_z2 = nn.LayerNorm(dim_z)
+        self.norm_z1 = ops.LayerNorm(dim_z)
+        self.norm_z2 = ops.LayerNorm(dim_z)
         self.ff = FeedForward(dim_z, dropout=ff_drop)
 
     def forward(self, z, x):
@@ -284,11 +291,11 @@ class TriplaneAttention(nn.Module):
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
-        self.wq = nn.Linear(dim, dim, bias=qkv_bias)
-        self.wk = nn.Linear(dim, dim, bias=qkv_bias)
-        self.wv = nn.Linear(dim, dim, bias=qkv_bias)
+        self.wq = ops.Linear(dim, dim, bias=qkv_bias)
+        self.wk = ops.Linear(dim, dim, bias=qkv_bias)
+        self.wv = ops.Linear(dim, dim, bias=qkv_bias)
         self.attn_drop = attn_drop
-        self.proj = nn.Linear(dim, dim)
+        self.proj = ops.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
         self.resolution = resolution
@@ -427,22 +434,22 @@ class TwoStreamInterleaveTransformer(BaseModule):
 
         # Define input layers
         if self.cfg.norm_num_groups > 0:
-            self.norm_triplane = torch.nn.GroupNorm(
+            self.norm_triplane = ops.GroupNorm(
                 num_groups=self.cfg.norm_num_groups,
                 num_channels=self.cfg.raw_triplane_channels,
                 eps=1e-6,
                 affine=True,
             )
         else:
-            self.norm_triplane = nn.LayerNorm(self.cfg.raw_triplane_channels)
-        self.proj_triplane = nn.Linear(
+            self.norm_triplane = ops.LayerNorm(self.cfg.raw_triplane_channels)
+        self.proj_triplane = ops.Linear(
             self.cfg.raw_triplane_channels, self.cfg.triplane_channels
         )
         if self.mix_latent:
-            self.norm_image = nn.LayerNorm(self.cfg.raw_image_channels)
-            self.proj_image = nn.Linear(self.cfg.raw_image_channels, self.latent_dim)
-        self.norm_latent = nn.LayerNorm(self.latent_dim)
-        self.proj_latent = nn.Linear(self.latent_dim, self.latent_dim)
+            self.norm_image = ops.LayerNorm(self.cfg.raw_image_channels)
+            self.proj_image = ops.Linear(self.cfg.raw_image_channels, self.latent_dim)
+        self.norm_latent = ops.LayerNorm(self.latent_dim)
+        self.proj_latent = ops.Linear(self.latent_dim, self.latent_dim)
 
         # Define the latents
         self.latent_init = nn.Parameter(
@@ -469,7 +476,7 @@ class TwoStreamInterleaveTransformer(BaseModule):
         )
 
         # 4. Define output layers
-        self.proj_out = nn.Linear(
+        self.proj_out = ops.Linear(
             self.cfg.triplane_channels, self.cfg.raw_triplane_channels
         )
 

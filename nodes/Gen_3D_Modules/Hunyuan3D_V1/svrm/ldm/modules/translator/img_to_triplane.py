@@ -5,6 +5,13 @@ from ..attention import ImgToTriplaneTransformer
 import math
 from einops import rearrange
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class ImgToTriplaneModel(nn.Module):
     """
@@ -73,23 +80,23 @@ class ImgToTriplaneModel(nn.Module):
             upsamplers = []
             for i in range(upsample_time):
                 if i == 0:
-                    upsampler = nn.ConvTranspose2d(in_channels=pos_emb_dim, out_channels=triplane_dim,
+                    upsampler = ops.ConvTranspose2d(in_channels=pos_emb_dim, out_channels=triplane_dim,
                                             kernel_size=2, stride=2,
                                             padding=0, output_padding=0)
                     upsamplers.append(upsampler)
                 else:
-                    upsampler = nn.ConvTranspose2d(in_channels=triplane_dim, out_channels=triplane_dim,
+                    upsampler = ops.ConvTranspose2d(in_channels=triplane_dim, out_channels=triplane_dim,
                                             kernel_size=2, stride=2,
                                             padding=0, output_padding=0)
                     upsamplers.append(upsampler)
             if upsamplers:
                 self.upsampler = nn.Sequential(*upsamplers)
             else:
-                self.upsampler = nn.Conv2d(in_channels=pos_emb_dim, out_channels=triplane_dim,
+                self.upsampler = ops.Conv2d(in_channels=pos_emb_dim, out_channels=triplane_dim,
                                             kernel_size=3, stride=1, padding=1)
         else:
             self.upsample_ratio = 4
-            self.upsampler = nn.Linear(in_features=pos_emb_dim, out_features=triplane_dim*(self.upsample_ratio**2))
+            self.upsampler = ops.Linear(in_features=pos_emb_dim, out_features=triplane_dim*(self.upsample_ratio**2))
         
 
 

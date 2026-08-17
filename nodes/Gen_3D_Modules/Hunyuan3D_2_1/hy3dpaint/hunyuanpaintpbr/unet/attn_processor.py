@@ -20,6 +20,13 @@ from einops import rearrange
 from diffusers.utils import deprecate
 from diffusers.models.attention_processor import Attention, AttnProcessor
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class AttnUtils:
     """
@@ -323,17 +330,17 @@ class BaseAttnProcessor(nn.Module):
             for module_type in module_types:
                 if module_type == "qkv":
                     self.register_module(
-                        f"to_q_{pbr_token}", nn.Linear(self.query_dim, self.inner_dim, bias=self.use_bias)
+                        f"to_q_{pbr_token}", ops.Linear(self.query_dim, self.inner_dim, bias=self.use_bias)
                     )
                     self.register_module(
-                        f"to_k_{pbr_token}", nn.Linear(self.cross_attention_dim, self.inner_dim, bias=self.use_bias)
+                        f"to_k_{pbr_token}", ops.Linear(self.cross_attention_dim, self.inner_dim, bias=self.use_bias)
                     )
                     self.register_module(
-                        f"to_v_{pbr_token}", nn.Linear(self.cross_attention_dim, self.inner_dim, bias=self.use_bias)
+                        f"to_v_{pbr_token}", ops.Linear(self.cross_attention_dim, self.inner_dim, bias=self.use_bias)
                     )
                 elif module_type == "v_only":
                     self.register_module(
-                        f"to_v_{pbr_token}", nn.Linear(self.cross_attention_dim, self.inner_dim, bias=self.use_bias)
+                        f"to_v_{pbr_token}", ops.Linear(self.cross_attention_dim, self.inner_dim, bias=self.use_bias)
                     )
                 elif module_type == "out":
                     if not self.pre_only:
@@ -341,7 +348,7 @@ class BaseAttnProcessor(nn.Module):
                             f"to_out_{pbr_token}",
                             nn.ModuleList(
                                 [
-                                    nn.Linear(self.inner_dim, self.out_dim, bias=kwargs.get("out_bias", True)),
+                                    ops.Linear(self.inner_dim, self.out_dim, bias=kwargs.get("out_bias", True)),
                                     nn.Dropout(self.dropout),
                                 ]
                             ),
@@ -352,11 +359,11 @@ class BaseAttnProcessor(nn.Module):
                     if self.added_kv_proj_dim is not None:
                         self.register_module(
                             f"add_k_proj_{pbr_token}",
-                            nn.Linear(self.added_kv_proj_dim, self.inner_kv_dim, bias=self.added_proj_bias),
+                            ops.Linear(self.added_kv_proj_dim, self.inner_kv_dim, bias=self.added_proj_bias),
                         )
                         self.register_module(
                             f"add_v_proj_{pbr_token}",
-                            nn.Linear(self.added_kv_proj_dim, self.inner_kv_dim, bias=self.added_proj_bias),
+                            ops.Linear(self.added_kv_proj_dim, self.inner_kv_dim, bias=self.added_proj_bias),
                         )
                     else:
                         self.register_module(f"add_k_proj_{pbr_token}", None)

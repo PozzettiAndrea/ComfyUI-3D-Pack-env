@@ -7,6 +7,13 @@ from typing import Callable, Iterable, Sequence, Union
 
 import torch
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 def checkpoint(
     func: Callable[..., Union[torch.Tensor, Sequence[torch.Tensor]]],
     inputs: Sequence[torch.Tensor],
@@ -70,8 +77,8 @@ class MLP(nn.Module):
     def __init__(self, *, device: torch.device, dtype: torch.dtype, width: int, init_scale: float):
         super().__init__()
         self.width = width
-        self.c_fc = nn.Linear(width, width * 4, device=device, dtype=dtype)
-        self.c_proj = nn.Linear(width * 4, width, device=device, dtype=dtype)
+        self.c_fc = ops.Linear(width, width * 4, device=device, dtype=dtype)
+        self.c_proj = ops.Linear(width * 4, width, device=device, dtype=dtype)
         self.gelu = nn.GELU()
         init_linear(self.c_fc, init_scale)
         init_linear(self.c_proj, init_scale)
@@ -144,10 +151,10 @@ class MultiheadCrossAttention(nn.Module):
         self.width = width
         self.heads = heads
         self.data_width = width if data_width is None else data_width
-        self.c_q = nn.Linear(width, width, device=device, dtype=dtype)
-        self.c_kv = nn.Linear(self.data_width, width * 2,
+        self.c_q = ops.Linear(width, width, device=device, dtype=dtype)
+        self.c_kv = ops.Linear(self.data_width, width * 2,
                               device=device, dtype=dtype)
-        self.c_proj = nn.Linear(width, width, device=device, dtype=dtype)
+        self.c_proj = ops.Linear(width, width, device=device, dtype=dtype)
         self.attention = QKVMultiheadCrossAttention(
             device=device, dtype=dtype, heads=heads, n_data=n_data
         )
@@ -178,8 +185,8 @@ class MultiheadAttention(nn.Module):
         self.n_ctx = n_ctx
         self.width = width
         self.heads = heads
-        self.c_qkv = nn.Linear(width, width * 3, device=device, dtype=dtype)
-        self.c_proj = nn.Linear(width, width, device=device, dtype=dtype)
+        self.c_qkv = ops.Linear(width, width * 3, device=device, dtype=dtype)
+        self.c_proj = ops.Linear(width, width, device=device, dtype=dtype)
         self.attention = QKVMultiheadAttention(device=device, dtype=dtype, heads=heads, n_ctx=n_ctx)
         init_linear(self.c_qkv, init_scale)
         init_linear(self.c_proj, init_scale)
@@ -225,12 +232,12 @@ class ResidualTransformerBlock(nn.Module):
             heads=heads,
             init_scale=init_scale,
         )
-        self.ln_1 = nn.LayerNorm(width, device=device, dtype=dtype)
-        self.ln_2 = nn.LayerNorm(data_width, device=device, dtype=dtype)
-        self.ln_3 = nn.LayerNorm(width, device=device, dtype=dtype)
+        self.ln_1 = ops.LayerNorm(width, device=device, dtype=dtype)
+        self.ln_2 = ops.LayerNorm(data_width, device=device, dtype=dtype)
+        self.ln_3 = ops.LayerNorm(width, device=device, dtype=dtype)
         self.mlp = MLP(device=device, dtype=dtype,
                        width=width, init_scale=init_scale)
-        self.ln_4 = nn.LayerNorm(width, device=device, dtype=dtype)
+        self.ln_4 = ops.LayerNorm(width, device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor, data: torch.Tensor):
         x = x + self.attn_cross(self.ln_1(x), self.ln_2(data))

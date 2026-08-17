@@ -15,6 +15,13 @@ from ...utils.typing import *
 
 from .utils import AutoEncoder, FourierEmbedder, get_embedder
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 class PerceiverCrossAttentionEncoder(nn.Module):
     def __init__(self,
                  use_downsample: bool,
@@ -43,9 +50,9 @@ class PerceiverCrossAttentionEncoder(nn.Module):
 
         self.embedder = embedder
         if self.embed_point_feats:
-            self.input_proj = nn.Linear(self.embedder.out_dim * 2, width)
+            self.input_proj = ops.Linear(self.embedder.out_dim * 2, width)
         else:
-            self.input_proj = nn.Linear(self.embedder.out_dim + point_feats, width)
+            self.input_proj = ops.Linear(self.embedder.out_dim + point_feats, width)
 
         self.cross_attn = ResidualCrossAttentionBlock(
             width=width,
@@ -67,7 +74,7 @@ class PerceiverCrossAttentionEncoder(nn.Module):
         )
 
         if use_ln_post:
-            self.ln_post = nn.LayerNorm(width)
+            self.ln_post = ops.LayerNorm(width)
         else:
             self.ln_post = None
 
@@ -150,7 +157,7 @@ class PerceiverCrossAttentionDecoder(nn.Module):
         self.use_checkpoint = use_checkpoint
         self.embedder = embedder
 
-        self.query_proj = nn.Linear(self.embedder.out_dim, width)
+        self.query_proj = ops.Linear(self.embedder.out_dim, width)
 
         self.cross_attn_decoder = ResidualCrossAttentionBlock(
             n_data=num_latents,
@@ -161,8 +168,8 @@ class PerceiverCrossAttentionDecoder(nn.Module):
             use_flash=use_flash
         )
 
-        self.ln_post = nn.LayerNorm(width)
-        self.output_proj = nn.Linear(width, out_dim)
+        self.ln_post = ops.LayerNorm(width)
+        self.output_proj = ops.Linear(width, out_dim)
 
     def _forward(self, queries: torch.FloatTensor, latents: torch.FloatTensor):
         queries = self.query_proj(self.embedder(queries))
@@ -230,8 +237,8 @@ class MichelangeloAutoencoder(AutoEncoder):
 
         if self.cfg.embed_dim > 0:
             # VAE embed
-            self.pre_kl = nn.Linear(self.cfg.width, self.cfg.embed_dim * 2)
-            self.post_kl = nn.Linear(self.cfg.embed_dim, self.cfg.width)
+            self.pre_kl = ops.Linear(self.cfg.width, self.cfg.embed_dim * 2)
+            self.post_kl = ops.Linear(self.cfg.embed_dim, self.cfg.width)
             self.latent_shape = (self.cfg.num_latents, self.cfg.embed_dim)
         else:
             self.latent_shape = (self.cfg.num_latents, self.cfg.width)

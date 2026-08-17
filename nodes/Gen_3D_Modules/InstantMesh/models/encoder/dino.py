@@ -30,6 +30,13 @@ from transformers.modeling_outputs import (
 from transformers import PreTrainedModel, ViTConfig
 from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class ViTEmbeddings(nn.Module):
     """
@@ -131,7 +138,7 @@ class ViTPatchEmbeddings(nn.Module):
         self.num_channels = num_channels
         self.num_patches = num_patches
 
-        self.projection = nn.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
+        self.projection = ops.Conv2d(num_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, pixel_values: torch.Tensor, interpolate_pos_encoding: bool = False) -> torch.Tensor:
         batch_size, num_channels, height, width = pixel_values.shape
@@ -163,9 +170,9 @@ class ViTSelfAttention(nn.Module):
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.key = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
-        self.value = nn.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+        self.query = ops.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+        self.key = ops.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
+        self.value = ops.Linear(config.hidden_size, self.all_head_size, bias=config.qkv_bias)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
@@ -218,7 +225,7 @@ class ViTSelfOutput(nn.Module):
 
     def __init__(self, config: ViTConfig) -> None:
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense = ops.Linear(config.hidden_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -270,7 +277,7 @@ class ViTAttention(nn.Module):
 class ViTIntermediate(nn.Module):
     def __init__(self, config: ViTConfig) -> None:
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
+        self.dense = ops.Linear(config.hidden_size, config.intermediate_size)
         if isinstance(config.hidden_act, str):
             self.intermediate_act_fn = ACT2FN[config.hidden_act]
         else:
@@ -286,7 +293,7 @@ class ViTIntermediate(nn.Module):
 class ViTOutput(nn.Module):
     def __init__(self, config: ViTConfig) -> None:
         super().__init__()
-        self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
+        self.dense = ops.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -312,12 +319,12 @@ class ViTLayer(nn.Module):
         self.attention = ViTAttention(config)
         self.intermediate = ViTIntermediate(config)
         self.output = ViTOutput(config)
-        self.layernorm_before = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.layernorm_after = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm_before = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm_after = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(config.hidden_size, 4 * config.hidden_size, bias=True)
+            ops.Linear(config.hidden_size, 4 * config.hidden_size, bias=True)
         )
         nn.init.constant_(self.adaLN_modulation[-1].weight, 0)
         nn.init.constant_(self.adaLN_modulation[-1].bias, 0)
@@ -454,7 +461,7 @@ class ViTModel(ViTPreTrainedModel):
         self.embeddings = ViTEmbeddings(config, use_mask_token=use_mask_token)
         self.encoder = ViTEncoder(config)
 
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.layernorm = ops.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.pooler = ViTPooler(config) if add_pooling_layer else None
 
         # Initialize weights and apply final processing
@@ -538,7 +545,7 @@ class ViTModel(ViTPreTrainedModel):
 class ViTPooler(nn.Module):
     def __init__(self, config: ViTConfig):
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense = ops.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
 
     def forward(self, hidden_states):

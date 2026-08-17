@@ -10,6 +10,13 @@ import warnings
 from torch import Tensor, nn
 import torch.nn.functional as F
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class SwiGLUFFN(nn.Module):
     def __init__(
@@ -24,8 +31,8 @@ class SwiGLUFFN(nn.Module):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.w12 = nn.Linear(in_features, 2 * hidden_features, bias=bias)
-        self.w3 = nn.Linear(hidden_features, out_features, bias=bias)
+        self.w12 = ops.Linear(in_features, 2 * hidden_features, bias=bias)
+        self.w3 = ops.Linear(hidden_features, out_features, bias=bias)
 
     def forward(self, x: Tensor) -> Tensor:
         x12 = self.w12(x)

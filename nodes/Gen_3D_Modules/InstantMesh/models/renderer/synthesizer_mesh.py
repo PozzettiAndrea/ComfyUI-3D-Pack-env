@@ -11,6 +11,13 @@ import torch.nn as nn
 
 from .utils.renderer import generate_planes, project_onto_planes, sample_from_planes
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 class OSGDecoder(nn.Module):
     """
@@ -25,40 +32,40 @@ class OSGDecoder(nn.Module):
         super().__init__()
 
         self.net_sdf = nn.Sequential(
-            nn.Linear(3 * n_features, hidden_dim),
+            ops.Linear(3 * n_features, hidden_dim),
             activation(),
             *itertools.chain(*[[
-                nn.Linear(hidden_dim, hidden_dim),
+                ops.Linear(hidden_dim, hidden_dim),
                 activation(),
             ] for _ in range(num_layers - 2)]),
-            nn.Linear(hidden_dim, 1),
+            ops.Linear(hidden_dim, 1),
         )
         self.net_rgb = nn.Sequential(
-            nn.Linear(3 * n_features, hidden_dim),
+            ops.Linear(3 * n_features, hidden_dim),
             activation(),
             *itertools.chain(*[[
-                nn.Linear(hidden_dim, hidden_dim),
+                ops.Linear(hidden_dim, hidden_dim),
                 activation(),
             ] for _ in range(num_layers - 2)]),
-            nn.Linear(hidden_dim, 3),
+            ops.Linear(hidden_dim, 3),
         )
         self.net_deformation = nn.Sequential(
-            nn.Linear(3 * n_features, hidden_dim),
+            ops.Linear(3 * n_features, hidden_dim),
             activation(),
             *itertools.chain(*[[
-                nn.Linear(hidden_dim, hidden_dim),
+                ops.Linear(hidden_dim, hidden_dim),
                 activation(),
             ] for _ in range(num_layers - 2)]),
-            nn.Linear(hidden_dim, 3),
+            ops.Linear(hidden_dim, 3),
         )
         self.net_weight = nn.Sequential(
-            nn.Linear(8 * 3 * n_features, hidden_dim),
+            ops.Linear(8 * 3 * n_features, hidden_dim),
             activation(),
             *itertools.chain(*[[
-                nn.Linear(hidden_dim, hidden_dim),
+                ops.Linear(hidden_dim, hidden_dim),
                 activation(),
             ] for _ in range(num_layers - 2)]),
-            nn.Linear(hidden_dim, 21),
+            ops.Linear(hidden_dim, 21),
         )
 
         # init all bias to zero

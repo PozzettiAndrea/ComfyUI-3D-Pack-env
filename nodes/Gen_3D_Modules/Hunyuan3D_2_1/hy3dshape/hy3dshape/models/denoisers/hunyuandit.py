@@ -32,6 +32,13 @@ from einops import rearrange
 
 from .moe_layers import MoEBlock
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
@@ -96,14 +103,14 @@ class TimestepEmbedder(nn.Module):
         if out_size is None:
             out_size = hidden_size
         self.mlp = nn.Sequential(
-            nn.Linear(hidden_size, frequency_embedding_size, bias=True),
+            ops.Linear(hidden_size, frequency_embedding_size, bias=True),
             nn.GELU(),
-            nn.Linear(frequency_embedding_size, out_size, bias=True),
+            ops.Linear(frequency_embedding_size, out_size, bias=True),
         )
         self.frequency_embedding_size = frequency_embedding_size
 
         if cond_proj_dim is not None:
-            self.cond_proj = nn.Linear(cond_proj_dim, frequency_embedding_size, bias=False)
+            self.cond_proj = ops.Linear(cond_proj_dim, frequency_embedding_size, bias=False)
 
         self.time_embed = Timesteps(hidden_size)
 
@@ -124,8 +131,8 @@ class MLP(nn.Module):
     def __init__(self, *, width: int):
         super().__init__()
         self.width = width
-        self.fc1 = nn.Linear(width, width * 4)
-        self.fc2 = nn.Linear(width * 4, width)
+        self.fc1 = ops.Linear(width, width * 4)
+        self.fc2 = ops.Linear(width * 4, width)
         self.gelu = nn.GELU()
 
     def forward(self, x):
@@ -155,18 +162,18 @@ class CrossAttention(nn.Module):
         assert self.head_dim % 8 == 0 and self.head_dim <= 128, "Only support head_dim <= 128 and divisible by 8"
         self.scale = self.head_dim ** -0.5
 
-        self.to_q = nn.Linear(qdim, qdim, bias=qkv_bias)
-        self.to_k = nn.Linear(kdim, qdim, bias=qkv_bias)
-        self.to_v = nn.Linear(kdim, qdim, bias=qkv_bias)
+        self.to_q = ops.Linear(qdim, qdim, bias=qkv_bias)
+        self.to_k = ops.Linear(kdim, qdim, bias=qkv_bias)
+        self.to_v = ops.Linear(kdim, qdim, bias=qkv_bias)
 
         # TODO: eps should be 1 / 65530 if using fp16
         self.q_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.out_proj = nn.Linear(qdim, qdim, bias=True)
+        self.out_proj = ops.Linear(qdim, qdim, bias=True)
 
         self.with_dca = with_decoupled_ca
         if self.with_dca:
-            self.kv_proj_dca = nn.Linear(kdim, 2 * qdim, bias=qkv_bias)
+            self.kv_proj_dca = ops.Linear(kdim, 2 * qdim, bias=qkv_bias)
             self.k_norm_dca = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
             self.dca_dim = decoupled_ca_dim
             self.dca_weight = decoupled_ca_weight
@@ -259,13 +266,13 @@ class Attention(nn.Module):
         assert self.head_dim % 8 == 0 and self.head_dim <= 128, "Only support head_dim <= 128 and divisible by 8"
         self.scale = self.head_dim ** -0.5
 
-        self.to_q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.to_k = nn.Linear(dim, dim, bias=qkv_bias)
-        self.to_v = nn.Linear(dim, dim, bias=qkv_bias)
+        self.to_q = ops.Linear(dim, dim, bias=qkv_bias)
+        self.to_k = ops.Linear(dim, dim, bias=qkv_bias)
+        self.to_v = ops.Linear(dim, dim, bias=qkv_bias)
         # TODO: eps should be 1 / 65530 if using fp16
         self.q_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(self.head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.out_proj = nn.Linear(dim, dim)
+        self.out_proj = ops.Linear(dim, dim)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -339,7 +346,7 @@ class HunYuanDiTBlock(nn.Module):
         if self.timested_modulate:
             self.default_modulation = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(c_emb_size, hidden_size, bias=True)
+                ops.Linear(c_emb_size, hidden_size, bias=True)
             )
 
         # ========================= Cross-Attention =========================
@@ -352,7 +359,7 @@ class HunYuanDiTBlock(nn.Module):
 
         if skip_connection:
             self.skip_norm = norm_layer(hidden_size, elementwise_affine=True, eps=1e-6)
-            self.skip_linear = nn.Linear(2 * hidden_size, hidden_size)
+            self.skip_linear = ops.Linear(2 * hidden_size, hidden_size)
         else:
             self.skip_linear = None
 
@@ -406,10 +413,10 @@ class AttentionPool(nn.Module):
     def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
         super().__init__()
         self.positional_embedding = nn.Parameter(torch.randn(spacial_dim + 1, embed_dim) / embed_dim ** 0.5)
-        self.k_proj = nn.Linear(embed_dim, embed_dim)
-        self.q_proj = nn.Linear(embed_dim, embed_dim)
-        self.v_proj = nn.Linear(embed_dim, embed_dim)
-        self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
+        self.k_proj = ops.Linear(embed_dim, embed_dim)
+        self.q_proj = ops.Linear(embed_dim, embed_dim)
+        self.v_proj = ops.Linear(embed_dim, embed_dim)
+        self.c_proj = ops.Linear(embed_dim, output_dim or embed_dim)
         self.num_heads = num_heads
 
     def forward(self, x, attention_mask=None):
@@ -452,8 +459,8 @@ class FinalLayer(nn.Module):
     def __init__(self, final_hidden_size, out_channels):
         super().__init__()
         self.final_hidden_size = final_hidden_size
-        self.norm_final = nn.LayerNorm(final_hidden_size, elementwise_affine=True, eps=1e-6)
-        self.linear = nn.Linear(final_hidden_size, out_channels, bias=True)
+        self.norm_final = ops.LayerNorm(final_hidden_size, elementwise_affine=True, eps=1e-6)
+        self.linear = ops.Linear(final_hidden_size, out_channels, bias=True)
 
     def forward(self, x):
         x = self.norm_final(x)
@@ -511,7 +518,7 @@ class HunYuanDiTPlain(nn.Module):
 
         self.text_len = text_len
 
-        self.x_embedder = nn.Linear(in_channels, hidden_size, bias=True)
+        self.x_embedder = ops.Linear(in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size, hidden_size * 4, cond_proj_dim=guidance_cond_proj_dim)
 
         # Will use fixed sin-cos embedding:
@@ -525,17 +532,17 @@ class HunYuanDiTPlain(nn.Module):
         if use_attention_pooling:
             self.pooler = AttentionPool(self.text_len, context_dim, num_heads=8, output_dim=1024)
             self.extra_embedder = nn.Sequential(
-                nn.Linear(1024, hidden_size * 4),
+                ops.Linear(1024, hidden_size * 4),
                 nn.SiLU(),
-                nn.Linear(hidden_size * 4, hidden_size, bias=True),
+                ops.Linear(hidden_size * 4, hidden_size, bias=True),
             )
 
         if with_decoupled_ca:
             self.additional_cond_hidden_state = additional_cond_hidden_state
             self.additional_cond_proj = nn.Sequential(
-                nn.Linear(additional_cond_hidden_state, hidden_size * 4),
+                ops.Linear(additional_cond_hidden_state, hidden_size * 4),
                 nn.SiLU(),
-                nn.Linear(hidden_size * 4, 1024, bias=True),
+                ops.Linear(hidden_size * 4, 1024, bias=True),
             )
 
         # HUnYuanDiT Blocks

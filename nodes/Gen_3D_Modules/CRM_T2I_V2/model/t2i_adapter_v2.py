@@ -22,6 +22,13 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import logging
 from diffusers.models.modeling_utils import ModelMixin
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 logger = logging.get_logger(__name__)
 
@@ -42,18 +49,18 @@ class ImageConv2dEncoder(nn.Module):
     ):
         super().__init__()
 
-        self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
+        self.conv_in = ops.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
 
         self.blocks = nn.ModuleList([])
 
         for i in range(len(block_out_channels) - 1):
             channel_in = block_out_channels[i]
             channel_out = block_out_channels[i + 1]
-            self.blocks.append(nn.Conv2d(channel_in, channel_in, kernel_size=3, padding=1))
-            self.blocks.append(nn.Conv2d(channel_in, channel_out, kernel_size=3, padding=1, stride=2))
+            self.blocks.append(ops.Conv2d(channel_in, channel_in, kernel_size=3, padding=1))
+            self.blocks.append(ops.Conv2d(channel_in, channel_out, kernel_size=3, padding=1, stride=2))
 
         self.conv_out = self.zero_module(
-            nn.Conv2d(block_out_channels[-1], output_embedding_channels, kernel_size=3, padding=1)
+            ops.Conv2d(block_out_channels[-1], output_embedding_channels, kernel_size=3, padding=1)
         )
 
     def forward(self, conditioning):
@@ -464,7 +471,7 @@ class AdapterBlock(nn.Module):
 
         self.in_conv = None
         if in_channels != out_channels:
-            self.in_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+            self.in_conv = ops.Conv2d(in_channels, out_channels, kernel_size=1)
 
         self.resnets = nn.Sequential(
             *[AdapterResnetBlock(out_channels) for _ in range(num_res_blocks)],
@@ -498,9 +505,9 @@ class AdapterResnetBlock(nn.Module):
 
     def __init__(self, channels: int):
         super().__init__()
-        self.block1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.block1 = ops.Conv2d(channels, channels, kernel_size=3, padding=1)
         self.act = nn.ReLU()
-        self.block2 = nn.Conv2d(channels, channels, kernel_size=1)
+        self.block2 = ops.Conv2d(channels, channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""
@@ -593,9 +600,9 @@ class LightAdapterBlock(nn.Module):
         if down:
             self.downsample = nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=True)
 
-        self.in_conv = nn.Conv2d(in_channels, mid_channels, kernel_size=1)
+        self.in_conv = ops.Conv2d(in_channels, mid_channels, kernel_size=1)
         self.resnets = nn.Sequential(*[LightAdapterResnetBlock(mid_channels) for _ in range(num_res_blocks)])
-        self.out_conv = nn.Conv2d(mid_channels, out_channels, kernel_size=1)
+        self.out_conv = ops.Conv2d(mid_channels, out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""
@@ -624,9 +631,9 @@ class LightAdapterResnetBlock(nn.Module):
 
     def __init__(self, channels: int):
         super().__init__()
-        self.block1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.block1 = ops.Conv2d(channels, channels, kernel_size=3, padding=1)
         self.act = nn.ReLU()
-        self.block2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.block2 = ops.Conv2d(channels, channels, kernel_size=3, padding=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""

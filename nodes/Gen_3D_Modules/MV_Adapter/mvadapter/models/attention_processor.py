@@ -10,6 +10,13 @@ from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_ava
 from einops import rearrange, repeat
 from torch import nn
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 def default_set_attn_proc_func(
     name: str,
@@ -113,35 +120,35 @@ class DecoupledMVRowSelfAttnProcessor2_0(torch.nn.Module):
         self.use_ref = use_ref
 
         if self.use_mv:
-            self.to_q_mv = nn.Linear(
+            self.to_q_mv = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_k_mv = nn.Linear(
+            self.to_k_mv = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_v_mv = nn.Linear(
+            self.to_v_mv = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
             self.to_out_mv = nn.ModuleList(
                 [
-                    nn.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
+                    ops.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
                     nn.Dropout(0.0),
                 ]
             )
 
         if self.use_ref:
-            self.to_q_ref = nn.Linear(
+            self.to_q_ref = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_k_ref = nn.Linear(
+            self.to_k_ref = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_v_ref = nn.Linear(
+            self.to_v_ref = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
             self.to_out_ref = nn.ModuleList(
                 [
-                    nn.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
+                    ops.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
                     nn.Dropout(0.0),
                 ]
             )
@@ -404,35 +411,35 @@ class DecoupledMVRowColSelfAttnProcessor2_0(torch.nn.Module):
         self.use_ref = use_ref
 
         if self.use_mv:
-            self.to_q_mv = nn.Linear(
+            self.to_q_mv = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_k_mv = nn.Linear(
+            self.to_k_mv = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_v_mv = nn.Linear(
+            self.to_v_mv = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
             self.to_out_mv = nn.ModuleList(
                 [
-                    nn.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
+                    ops.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
                     nn.Dropout(0.0),
                 ]
             )
 
         if self.use_ref:
-            self.to_q_ref = nn.Linear(
+            self.to_q_ref = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_k_ref = nn.Linear(
+            self.to_k_ref = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
-            self.to_v_ref = nn.Linear(
+            self.to_v_ref = ops.Linear(
                 in_features=query_dim, out_features=inner_dim, bias=False
             )
             self.to_out_ref = nn.ModuleList(
                 [
-                    nn.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
+                    ops.Linear(in_features=inner_dim, out_features=query_dim, bias=True),
                     nn.Dropout(0.0),
                 ]
             )

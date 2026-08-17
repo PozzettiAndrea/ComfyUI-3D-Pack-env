@@ -32,6 +32,13 @@ from einops import rearrange, repeat
 import pdb
 import random
 
+import comfy.ops
+
+# Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
+# only lowvram-offloads modules carrying `comfy_cast_weights`, which every
+# comfy.ops class has and no torch.nn class does.
+ops = comfy.ops.manual_cast
+
 
 if is_xformers_available():
     import xformers
@@ -163,7 +170,7 @@ class TransformerMV2DModel(ModelMixin, ConfigMixin):
         if self.is_input_continuous:
             self.in_channels = in_channels
 
-            self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+            self.norm = ops.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
             if use_linear_projection:
                 self.proj_in = LoRACompatibleLinear(in_channels, inner_dim)
             else:
@@ -231,12 +238,12 @@ class TransformerMV2DModel(ModelMixin, ConfigMixin):
             else:
                 self.proj_out = LoRACompatibleConv(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
         elif self.is_input_vectorized:
-            self.norm_out = nn.LayerNorm(inner_dim)
-            self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
+            self.norm_out = ops.LayerNorm(inner_dim)
+            self.out = ops.Linear(inner_dim, self.num_vector_embeds - 1)
         elif self.is_input_patches:
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+            self.norm_out = ops.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+            self.proj_out_1 = ops.Linear(inner_dim, 2 * inner_dim)
+            self.proj_out_2 = ops.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
     def forward(
         self,
@@ -440,7 +447,7 @@ class BasicMVTransformerBlock(nn.Module):
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
         else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm1 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
         self.multiview_attention = multiview_attention
         self.sparse_mv_attention = sparse_mv_attention
@@ -465,7 +472,7 @@ class BasicMVTransformerBlock(nn.Module):
             self.norm2 = (
                 AdaLayerNorm(dim, num_embeds_ada_norm)
                 if self.use_ada_layer_norm
-                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+                else ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
             )
             self.attn2 = Attention(
                 query_dim=dim,
@@ -481,7 +488,7 @@ class BasicMVTransformerBlock(nn.Module):
             self.attn2 = None
 
         # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+        self.norm3 = ops.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
         # let chunk size default to None
@@ -505,7 +512,7 @@ class BasicMVTransformerBlock(nn.Module):
                 processor=JointAttnProcessor()
             )
             nn.init.zeros_(self.attn_joint_last.to_out[0].weight.data)
-            self.norm_joint_last = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+            self.norm_joint_last = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else ops.LayerNorm(dim)
 
 
         self.cd_attention_mid = cd_attention_mid
@@ -524,7 +531,7 @@ class BasicMVTransformerBlock(nn.Module):
                 processor=JointAttnProcessor()
             )
             nn.init.zeros_(self.attn_joint_mid.to_out[0].weight.data)
-            self.norm_joint_mid = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+            self.norm_joint_mid = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else ops.LayerNorm(dim)
 
     def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int):
         # Sets chunk feed-forward
