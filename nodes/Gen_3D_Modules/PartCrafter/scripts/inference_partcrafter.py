@@ -101,11 +101,11 @@ if __name__ == "__main__":
     pipe: PartCrafterPipeline = PartCrafterPipeline.from_pretrained(partcrafter_weights_dir).to(device, dtype)
     
     # DEBUG: Set sampling version
-    print(f"🎛️  Setting sampling version to {args.sampling_version}")
+    print(f"Setting sampling version to {args.sampling_version}")
     if hasattr(pipe.vae, 'set_sampling_version'):
         pipe.vae.set_sampling_version(args.sampling_version)
     else:
-        print("⚠️  Warning: VAE doesn't have set_sampling_version method")
+        print("Warning: VAE doesn't have set_sampling_version method")
 
     set_seed(args.seed)
 

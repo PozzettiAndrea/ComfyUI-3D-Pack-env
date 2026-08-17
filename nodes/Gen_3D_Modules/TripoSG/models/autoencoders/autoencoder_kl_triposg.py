@@ -278,7 +278,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental.
 
         </Tip>
         """
@@ -304,7 +304,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental.
 
         </Tip>
 

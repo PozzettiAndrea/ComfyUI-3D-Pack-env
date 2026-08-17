@@ -165,7 +165,7 @@ class ImportanceRenderer(torch.nn.Module):
             if torch.any(is_ray_valid).item():
                 ray_start[~is_ray_valid] = ray_start[is_ray_valid].min()
                 ray_end[~is_ray_valid] = ray_start[is_ray_valid].max()
-            depths_coarse = self.sample_stratified(ray_origins, ray_start, ray_end, rendering_options['depth_resolution'], rendering_options['disparity_space_sampling']) # [1, N_ray, N_sample, 1]】
+            depths_coarse = self.sample_stratified(ray_origins, ray_start, ray_end, rendering_options['depth_resolution'], rendering_options['disparity_space_sampling']) # [1, N_ray, N_sample, 1]
         else:
             # Create stratified depth samples
             depths_coarse = self.sample_stratified(ray_origins, rendering_options['ray_start'], rendering_options['ray_end'], rendering_options['depth_resolution'], rendering_options['disparity_space_sampling'])

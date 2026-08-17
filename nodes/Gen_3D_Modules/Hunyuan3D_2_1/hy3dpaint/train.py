@@ -187,9 +187,9 @@ if __name__ == "__main__":
     cfgdir = os.path.join(logdir, "configs")
     codedir = os.path.join(logdir, "code")
 
-    node_rank = int(os.environ.get("NODE_RANK", 0))  # 当前节点的编号
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))  # 当前节点上的 GPU 编号
-    num_gpus_per_node = torch.cuda.device_count()  # 每个节点上的 GPU 数量
+    node_rank = int(os.environ.get("NODE_RANK", 0))  # index of the current node
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))  # GPU index on the current node
+    num_gpus_per_node = torch.cuda.device_count()  # number of GPUs per node
 
     global_rank = node_rank * num_gpus_per_node + local_rank
     seed_everything(opt.seed + global_rank)

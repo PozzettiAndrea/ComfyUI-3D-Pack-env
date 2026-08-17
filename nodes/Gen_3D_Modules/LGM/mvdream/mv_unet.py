@@ -198,7 +198,7 @@ class MemoryEfficientCrossAttention(nn.Module):
         context = default(context, x)
 
         if self.ip_dim > 0:
-            # context： [B, 77 + 16(ip), 1024]
+            # context: [B, 77 + 16(ip), 1024]
             token_len = context.shape[1]
             context_ip = context[:, -self.ip_dim :, :]
             k_ip = self.to_k_ip(context_ip)

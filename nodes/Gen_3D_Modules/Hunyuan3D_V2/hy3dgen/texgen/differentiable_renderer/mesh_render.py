@@ -288,7 +288,7 @@ class MeshRender():
         vtx_uv = self.vtx_uv.cpu().numpy()
         uv_idx = self.uv_idx.cpu().numpy()
 
-        # 坐标变换的逆变换
+        # inverse of the coordinate transform
         vtx_pos[:, [1, 2]] = vtx_pos[:, [2, 1]]
         vtx_pos[:, [0, 1]] = -vtx_pos[:, [0, 1]]
 
@@ -725,12 +725,12 @@ class MeshRender():
             1.0 - visible_mask,
             kernel,
             padding=kernel_size // 2)
-        visible_mask = 1.0 - (visible_mask > 0).float()  # 二值化
+        visible_mask = 1.0 - (visible_mask > 0).float()  # binarize
         visible_mask = visible_mask.squeeze(0).permute(1, 2, 0)
 
         sketch_image = sketch_image.permute(2, 0, 1).unsqueeze(0)
         sketch_image = F.conv2d(sketch_image, kernel, padding=kernel_size // 2)
-        sketch_image = (sketch_image > 0).float()  # 二值化
+        sketch_image = (sketch_image > 0).float()  # binarize
         sketch_image = sketch_image.squeeze(0).permute(1, 2, 0)
         visible_mask = visible_mask * (sketch_image < 0.5)
 

@@ -513,7 +513,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental.
 
         </Tip>
         """
@@ -539,7 +539,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental.
 
         </Tip>
 

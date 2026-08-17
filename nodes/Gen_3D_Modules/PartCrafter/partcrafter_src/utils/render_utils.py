@@ -30,7 +30,7 @@ def explode_mesh(mesh, explosion_scale=0.4):
     # 1) collect (name, geom, world_center)
     parts = []
     for name, geom in scene.geometry.items():
-        # ← get(name) returns (4×4 world‐space matrix, parent_frame)
+        # <- get(name) returns (4x4 world-space matrix, parent_frame)
         world_tf, _ = scene.graph.get(name)
         pts = trimesh.transformations.transform_points(geom.vertices, world_tf)
         center = pts.mean(axis=0)

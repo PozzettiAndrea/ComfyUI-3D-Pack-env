@@ -290,7 +290,7 @@ def process_raw(mesh_path, save_path, preprocess=True, device="cpu"):
         device=device,
         dtype=torch.long,
     ).reshape(-1, 3)
-    # uv, index = torch.unique(v_tex, dim=0, return_inverse=True) # 这样实现是2毫秒
+    # uv, index = torch.unique(v_tex, dim=0, return_inverse=True) # this implementation takes 2 ms
     # super efficient de-duplication
     v_tex_u_uint32 = v_tex_np[..., 0].view(np.uint32)
     v_tex_v_uint32 = v_tex_np[..., 1].view(np.uint32)

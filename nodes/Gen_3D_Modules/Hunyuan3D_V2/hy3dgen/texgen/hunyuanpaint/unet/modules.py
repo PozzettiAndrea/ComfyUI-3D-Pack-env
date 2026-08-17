@@ -268,7 +268,7 @@ class Basic2p5DTransformerBlock(torch.nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
-        # i2vgen doesn't have this norm 🤷‍♂️
+        # i2vgen doesn't have this norm
         if self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
         elif not self.norm_type == "ada_norm_single":
@@ -330,11 +330,11 @@ def compute_voxel_grid_mask(position, grid_resolution=8):
     grid_position = grid_position.permute(0,1,4,2,3)
     grid_position = rearrange(grid_position, 'b n c h w -> b n (h w) c')
 
-    grid_position_expanded_1 = grid_position.unsqueeze(2).unsqueeze(4)  # 形状变为 B, N, 1, L, 1, 3
-    grid_position_expanded_2 = grid_position.unsqueeze(1).unsqueeze(3)  # 形状变为 B, 1, N, 1, L, 3
+    grid_position_expanded_1 = grid_position.unsqueeze(2).unsqueeze(4)  # shape becomes B, N, 1, L, 1, 3
+    grid_position_expanded_2 = grid_position.unsqueeze(1).unsqueeze(3)  # shape becomes B, 1, N, 1, L, 3
 
-    # 计算欧氏距离
-    distances = torch.norm(grid_position_expanded_1 - grid_position_expanded_2, dim=-1)  # 形状为 B, N, N, L, L
+    # compute the Euclidean distance
+    distances = torch.norm(grid_position_expanded_1 - grid_position_expanded_2, dim=-1)  # shape is B, N, N, L, L
 
     weights = distances
     grid_distance = 1.73/grid_resolution

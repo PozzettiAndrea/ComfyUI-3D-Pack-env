@@ -87,13 +87,13 @@ def get_camera(
 
 def get_camera_for_index(data_index):
     """
-    按照当前我们的数据格式, 以000为正对我们的情况:
-    000是正面, ev: 0, azimuth: 0
-    001是左边, ev: 0, azimuth: -90
-    002是下面, ev: -90, azimuth: 0
-    003是背面, ev: 0, azimuth: 180
-    004是右边, ev: 0, azimuth: 90
-    005是上面, ev: 90, azimuth: 0
+    With our current data format, taking 000 as the front-facing case:
+    000 is front, ev: 0, azimuth: 0
+    001 is left, ev: 0, azimuth: -90
+    002 is bottom, ev: -90, azimuth: 0
+    003 is back, ev: 0, azimuth: 180
+    004 is right, ev: 0, azimuth: 90
+    005 is top, ev: 90, azimuth: 0
     """
     params = [(0, 0), (0, -90), (-90, 0), (0, 180), (0, 90), (90, 0)]
     return get_camera(1, *params[data_index])

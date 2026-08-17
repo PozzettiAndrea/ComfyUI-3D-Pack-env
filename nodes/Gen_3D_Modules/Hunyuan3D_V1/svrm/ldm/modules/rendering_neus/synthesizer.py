@@ -214,7 +214,7 @@ class TriplaneSynthesizer(nn.Module):
             'sdf_grad': sdf_grad,
             'comp_normal': normal_images
         }
-        # 输出normal的话在这个return里加
+        # to also output normal, add it to this return
 
     def forward_grid(self, planes, grid_size: int, aabb: torch.Tensor = None):
         # planes: (N, 3, D', H', W')

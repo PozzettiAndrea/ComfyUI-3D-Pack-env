@@ -10,32 +10,32 @@ import os
 
 def combine_metallic_roughness(metallic_path, roughness_path, output_path):
     """
-    将metallic和roughness贴图合并为一张贴图
-    GLB格式要求metallic在B通道，roughness在G通道
+    Merge the metallic and roughness maps into a single map
+    The GLB format requires metallic in the B channel and roughness in the G channel
     """
-    # 加载贴图
-    metallic_img = Image.open(metallic_path).convert("L")  # 转为灰度
-    roughness_img = Image.open(roughness_path).convert("L")  # 转为灰度
+    # load the maps
+    metallic_img = Image.open(metallic_path).convert("L")  # convert to greyscale
+    roughness_img = Image.open(roughness_path).convert("L")  # convert to greyscale
 
-    # 确保尺寸一致
+    # make sure the sizes match
     if metallic_img.size != roughness_img.size:
         roughness_img = roughness_img.resize(metallic_img.size)
 
-    # 创建RGB图像
+    # create the RGB image
     width, height = metallic_img.size
     combined = Image.new("RGB", (width, height))
 
-    # 转为numpy数组便于操作
+    # convert to a numpy array for easier manipulation
     metallic_array = np.array(metallic_img)
     roughness_array = np.array(roughness_img)
 
-    # 创建合并的数组 (R, G, B) = (AO, Roughness, Metallic)
+    # create the merged array (R, G, B) = (AO, Roughness, Metallic)
     combined_array = np.zeros((height, width, 3), dtype=np.uint8)
-    combined_array[:, :, 0] = 255  # R通道：AO (如果没有AO贴图，设为白色)
-    combined_array[:, :, 1] = roughness_array  # G通道：Roughness
-    combined_array[:, :, 2] = metallic_array  # B通道：Metallic
+    combined_array[:, :, 0] = 255  # R channel: AO (set to white when there is no AO map)
+    combined_array[:, :, 1] = roughness_array  # G channel: Roughness
+    combined_array[:, :, 2] = metallic_array  # B channel: Metallic
 
-    # 转回PIL图像并保存
+    # convert back to a PIL image and save
     combined = Image.fromarray(combined_array)
     combined.save(output_path)
     return output_path
@@ -43,40 +43,40 @@ def combine_metallic_roughness(metallic_path, roughness_path, output_path):
 
 def create_glb_with_pbr_materials(obj_path, textures_dict, output_path):
     """
-    使用pygltflib创建包含完整PBR材质的GLB文件
+    Create a GLB file with full PBR materials using pygltflib
 
     textures_dict = {
         'albedo': 'path/to/albedo.png',
         'metallic': 'path/to/metallic.png',
         'roughness': 'path/to/roughness.png',
-        'normal': 'path/to/normal.png',  # 可选
-        'ao': 'path/to/ao.png'  # 可选
+        'normal': 'path/to/normal.png',  # optional
+        'ao': 'path/to/ao.png'  # optional
     }
     """
     temp_files = []
     
     try:
-        # 1. 加载OBJ文件
+        # 1. load the OBJ file
         mesh = trimesh.load(obj_path)
 
-        # 2. 先导出为临时GLB
+        # 2. first export to a temporary GLB
         with tempfile.NamedTemporaryFile(suffix='.glb', delete=False) as temp_glb_file:
             temp_glb = temp_glb_file.name
         temp_files.append(temp_glb)
         mesh.export(temp_glb)
 
-        # 3. 加载GLB文件进行材质编辑
+        # 3. load the GLB file for material editing
         gltf = pygltflib.GLTF2().load(temp_glb)
 
-        # 4. 准备纹理数据
+        # 4. prepare texture data
         def image_to_data_uri(image_path):
-            """将图像转换为data URI"""
+            """Convert an image to a data URI"""
             with open(image_path, "rb") as f:
                 image_data = f.read()
             encoded = base64.b64encode(image_data).decode()
             return f"data:image/png;base64,{encoded}"
 
-        # 5. 合并metallic和roughness
+        # 5. merge metallic and roughness
         mr_combined_path = None
         if "metallic" in textures_dict and "roughness" in textures_dict:
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_mr_file:
@@ -85,7 +85,7 @@ def create_glb_with_pbr_materials(obj_path, textures_dict, output_path):
             combine_metallic_roughness(textures_dict["metallic"], textures_dict["roughness"], mr_combined_path)
             textures_dict["metallicRoughness"] = mr_combined_path
 
-        # 6. 添加图像到GLTF
+        # 6. add images to the GLTF
         images = []
         textures = []
 
@@ -98,20 +98,20 @@ def create_glb_with_pbr_materials(obj_path, textures_dict, output_path):
 
         for tex_type, tex_path in textures_dict.items():
             if tex_type in texture_mapping and tex_path and os.path.exists(tex_path):
-                # 添加图像
+                # add image
                 image = pygltflib.Image(uri=image_to_data_uri(tex_path))
                 images.append(image)
 
-                # 添加纹理
+                # add texture
                 texture = pygltflib.Texture(source=len(images) - 1)
                 textures.append(texture)
 
-        # 7. 创建PBR材质
+        # 7. create the PBR material
         pbr_metallic_roughness = pygltflib.PbrMetallicRoughness(
             baseColorFactor=[1.0, 1.0, 1.0, 1.0], metallicFactor=1.0, roughnessFactor=1.0
         )
 
-        # 设置纹理索引
+        # set the texture index
         texture_index = 0
         if "albedo" in textures_dict and os.path.exists(textures_dict["albedo"]):
             pbr_metallic_roughness.baseColorTexture = pygltflib.TextureInfo(index=texture_index)
@@ -121,29 +121,29 @@ def create_glb_with_pbr_materials(obj_path, textures_dict, output_path):
             pbr_metallic_roughness.metallicRoughnessTexture = pygltflib.TextureInfo(index=texture_index)
             texture_index += 1
 
-        # 创建材质
+        # create the material
         material = pygltflib.Material(name="PBR_Material", pbrMetallicRoughness=pbr_metallic_roughness)
 
-        # 添加法线贴图
+        # add the normal map
         if "normal" in textures_dict and os.path.exists(textures_dict["normal"]):
             material.normalTexture = pygltflib.NormalTextureInfo(index=texture_index)
             texture_index += 1
 
-        # 添加AO贴图
+        # add the AO map
         if "ao" in textures_dict and os.path.exists(textures_dict["ao"]):
             material.occlusionTexture = pygltflib.OcclusionTextureInfo(index=texture_index)
 
-        # 8. 更新GLTF
+        # 8. update the GLTF
         gltf.images = images
         gltf.textures = textures
         gltf.materials = [material]
 
-        # 确保mesh使用材质
+        # make sure the mesh uses the material
         if gltf.meshes:
             for primitive in gltf.meshes[0].primitives:
                 primitive.material = 0
 
-        # 9. 保存最终GLB
+        # 9. save the final GLB
         gltf.save(output_path)
         print(f"PBR GLB file saved: {output_path}")
         

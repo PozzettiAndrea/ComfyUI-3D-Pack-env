@@ -40,11 +40,11 @@ class HunyuanDiTPipeline:
             enable_pag=True,
             pag_applied_layers=["blocks.(16|17|18|19)"]
         ).to(device)
-        self.pos_txt = ",白色背景,3D风格,最佳质量"
-        self.neg_txt = "文本,特写,裁剪,出框,最差质量,低质量,JPEG伪影,PGLY,重复,病态," \
-                       "残缺,多余的手指,变异的手,画得不好的手,画得不好的脸,变异,畸形,模糊,脱水,糟糕的解剖学," \
-                       "糟糕的比例,多余的肢体,克隆的脸,毁容,恶心的比例,畸形的肢体,缺失的手臂,缺失的腿," \
-                       "额外的手臂,额外的腿,融合的手指,手指太多,长脖子"
+        self.pos_txt = ",\u767d\u8272\u80cc\u666f,3D\u98ce\u683c,\u6700\u4f73\u8d28\u91cf"
+        self.neg_txt = "\u6587\u672c,\u7279\u5199,\u88c1\u526a,\u51fa\u6846,\u6700\u5dee\u8d28\u91cf,\u4f4e\u8d28\u91cf,JPEG\u4f2a\u5f71,PGLY,\u91cd\u590d,\u75c5\u6001," \
+                       "\u6b8b\u7f3a,\u591a\u4f59\u7684\u624b\u6307,\u53d8\u5f02\u7684\u624b,\u753b\u5f97\u4e0d\u597d\u7684\u624b,\u753b\u5f97\u4e0d\u597d\u7684\u8138,\u53d8\u5f02,\u7578\u5f62,\u6a21\u7cca,\u8131\u6c34,\u7cdf\u7cd5\u7684\u89e3\u5256\u5b66," \
+                       "\u7cdf\u7cd5\u7684\u6bd4\u4f8b,\u591a\u4f59\u7684\u80a2\u4f53,\u514b\u9686\u7684\u8138,\u6bc1\u5bb9,\u6076\u5fc3\u7684\u6bd4\u4f8b,\u7578\u5f62\u7684\u80a2\u4f53,\u7f3a\u5931\u7684\u624b\u81c2,\u7f3a\u5931\u7684\u817f," \
+                       "\u989d\u5916\u7684\u624b\u81c2,\u989d\u5916\u7684\u817f,\u878d\u5408\u7684\u624b\u6307,\u624b\u6307\u592a\u591a,\u957f\u8116\u5b50"
 
     def compile(self):
         # accelarate hunyuan-dit transformer,first inference will cost long time
@@ -53,8 +53,8 @@ class HunyuanDiTPipeline:
         # self.pipe.vae.decode = torch.compile(self.pipe.vae.decode, fullgraph=True)
         generator = torch.Generator(device=self.pipe.device)  # infer once for hot-start
         out_img = self.pipe(
-            prompt='美少女战士',
-            negative_prompt='模糊',
+            prompt='\u7f8e\u5c11\u5973\u6218\u58eb',
+            negative_prompt='\u6a21\u7cca',
             num_inference_steps=25,
             pag_scale=1.3,
             width=1024,

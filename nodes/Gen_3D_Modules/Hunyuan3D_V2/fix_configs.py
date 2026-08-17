@@ -16,7 +16,7 @@ def patch_yaml_imports(root_dir):
                     new_content = content.replace(f"{OLD_IMPORT}.", f"{NEW_IMPORT}.")
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(new_content)
-                    print(f"✔ Updated: {file_path}")
+                    print(f"[OK] Updated: {file_path}")
                 else:
                     print(f"– Skipped (no match): {file_path}")
 

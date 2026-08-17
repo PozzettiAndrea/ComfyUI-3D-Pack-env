@@ -161,10 +161,10 @@ def _create_mtl_file(base_path: str, texture_maps: Dict[str, str], is_pbr: bool)
             # PBR material properties
             properties = {
                 "Kd": [0.800, 0.800, 0.800],
-                "Ke": [0.000, 0.000, 0.000],  # 鐜鍏夐伄钄�
-                "Ni": 1.500,  # 鎶樺皠绯绘暟
-                "d": 1.0,  # 閫忔槑搴�
-                "illum": 2,  # 鍏夌収妯″瀷
+                "Ke": [0.000, 0.000, 0.000],  # ambient occlusion
+                "Ni": 1.500,  # refraction index
+                "d": 1.0,  # transparency
+                "illum": 2,  # illumination model
                 "map_Kd": texture_maps["diffuse"],
             }
             _write_mtl_properties(f, properties)

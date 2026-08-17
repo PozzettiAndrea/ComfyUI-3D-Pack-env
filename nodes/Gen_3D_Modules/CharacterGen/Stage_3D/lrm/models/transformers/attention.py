@@ -35,7 +35,7 @@ class MemoryEfficientAttentionMixin:
 
         <Tip warning={true}>
 
-        ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient attention takes
+        Warning: When memory efficient attention and sliced attention are both enabled, memory efficient attention takes
         precedent.
 
         </Tip>

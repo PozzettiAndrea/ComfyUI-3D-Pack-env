@@ -82,7 +82,7 @@ def ddim_sample(ddim_scheduler: DDIMScheduler,
     ddim_scheduler.set_timesteps(steps)
     timesteps = ddim_scheduler.timesteps.to(device)
     # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-    # eta (η) is only used with the DDIMScheduler, and between [0, 1]
+    # eta is only used with the DDIMScheduler, and between [0, 1]
     extra_step_kwargs = {
         # "eta": eta,
         "generator": generator
@@ -333,9 +333,9 @@ class ShapeDiffusionSystem(BaseSystem):
                 else:
                     sample_inputs["image"] = image
                 cond += [self.condition.encode_image(sample_inputs["image"])]
-            cond = torch.stack(cond, dim=0)# tensor  shape 为[len(sample_inputs["mvimages"], 4*(num_latents+1), context_dim]
+            cond = torch.stack(cond, dim=0)# tensor shape is [len(sample_inputs["mvimages"], 4*(num_latents+1), context_dim]
             if do_classifier_free_guidance:
-                un_cond = self.condition.empty_image_embeds.unsqueeze(0).repeat(len(sample_inputs["mvimages"]), cond.shape[1] // self.condition.cfg.n_views, 1, 1).to(cond) # shape 为[len(sample_inputs["mvimages"], 4*(num_latents+1), context_dim]
+                un_cond = self.condition.empty_image_embeds.unsqueeze(0).repeat(len(sample_inputs["mvimages"]), cond.shape[1] // self.condition.cfg.n_views, 1, 1).to(cond) # shape is [len(sample_inputs["mvimages"], 4*(num_latents+1), context_dim]
                 cond = torch.cat([un_cond, cond], dim=0).view(bs * 2, -1, cond[0].shape[-1]) 
         else:
             raise NotImplementedError("Only text, image or mvimages condition is supported.")

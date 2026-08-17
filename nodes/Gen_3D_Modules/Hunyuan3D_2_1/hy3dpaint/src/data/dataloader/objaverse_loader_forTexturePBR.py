@@ -66,7 +66,7 @@ class TextureDataset(BaseDataset):
             + glob.glob(os.path.join(dirx, "render_cond", "*.jpeg"))
         )
 
-        # 确保有足够的样本
+        # make sure there are enough samples
         if len(available_views) < fix_num_view:
             print(
                 f"Warning: Only {len(available_views)} views available, but {fix_num_view} requested."

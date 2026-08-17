@@ -1202,7 +1202,7 @@ class UNetMV2DRefModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device.
 
-                Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
+                Set `device_map="auto"` to have HuggingFace Accelerate automatically compute the most optimized `device_map`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
             max_memory (`Dict`, *optional*):

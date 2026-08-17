@@ -510,7 +510,7 @@ class PartCrafterDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental.
 
         </Tip>
         """
@@ -536,7 +536,7 @@ class PartCrafterDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental.
 
         </Tip>
 

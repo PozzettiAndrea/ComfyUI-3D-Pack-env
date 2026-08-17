@@ -54,27 +54,27 @@ def resize_with_aspect_ratio(image1, image2, pad_value=[255, 255, 255]):
 
 
 def estimate_img_mask(image):
-    # 转换为灰度图像
+    # convert to greyscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 使用大津法进行阈值分割
+    # threshold using Otsu's method
     # _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     # mask_otsu = thresh.astype(bool)
     # thresh_gray = 240
 
-    # 使用 Canny 边缘检测算法找到边缘
+    # find edges with the Canny edge detector
     edges = cv2.Canny(gray, 20, 50)
 
-    # 使用形态学操作扩展边缘
+    # dilate the edges with a morphological operation
     kernel = np.ones((3, 3), np.uint8)
     edges_dilated = cv2.dilate(edges, kernel, iterations=1)
 
     contours, _ = cv2.findContours(edges_dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # 创建一个空的 mask
+    # create an empty mask
     mask = np.zeros_like(gray, dtype=np.uint8)
 
-    # 根据轮廓信息填充 mask（使用 thickness=cv2.FILLED 参数）
+    # fill the mask from the contour info (using thickness=cv2.FILLED)
     cv2.drawContours(mask, contours, -1, 255, thickness=cv2.FILLED)
     mask = mask.astype(bool)
 
@@ -210,8 +210,8 @@ def predict_match_success(info, model=None):
         return predict_match_success_human(info)
     else:
         feat_name = ['match_num', 'match_rate', 'mask_iou', 'gray_diff', 'gray_diff_trunc', 'hausdorff_dist']
-        # 提取特征
+        # extract features
         features = [info[f] for f in feat_name]
-        # 预测
+        # predict
         pred = model.predict([features])[0]
         return pred >= 0.5

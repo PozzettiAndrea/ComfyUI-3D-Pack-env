@@ -51,7 +51,7 @@ class ViewProcessor:
         viewed_tri_idxs = []
         viewed_masks = []
 
-        # 计算每个三角片的面积
+        # compute the area of each triangle
         face_areas = self.render.get_face_areas(from_one_index=True)
         total_area = face_areas.sum()
         face_area_ratios = face_areas / total_area

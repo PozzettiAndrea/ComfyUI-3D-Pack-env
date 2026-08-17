@@ -526,11 +526,11 @@ class MeshRender:
             if pos.dim() == 2:
                 pos = pos.unsqueeze(0)
 
-            # 确保pos是float32类型
+            # make sure pos is float32
             if pos.dtype == torch.float64:
                 pos = pos.to(torch.float32)
 
-            # 确保tri是int32类型
+            # make sure tri is int32
             if tri.dtype == torch.int64:
                 tri = tri.to(torch.int32)
 
@@ -677,11 +677,11 @@ class MeshRender:
         self.vtx_pos = torch.from_numpy(vtx_pos).to(self.device)
         self.pos_idx = torch.from_numpy(pos_idx).to(self.device)
 
-        # 确保顶点位置是float32类型
+        # make sure vertex positions are float32
         if self.vtx_pos.dtype == torch.float64:
             self.vtx_pos = self.vtx_pos.to(torch.float32)
 
-        # 确保索引类型为int32
+        # make sure indices are int32
         if self.pos_idx.dtype == torch.int64:
             self.pos_idx = self.pos_idx.to(torch.int32)
 
@@ -689,11 +689,11 @@ class MeshRender:
             self.vtx_uv = torch.from_numpy(vtx_uv).to(self.device)
             self.uv_idx = torch.from_numpy(uv_idx).to(self.device)
 
-            # 确保UV坐标是float32类型
+            # make sure UV coordinates are float32
             if self.vtx_uv.dtype == torch.float64:
                 self.vtx_uv = self.vtx_uv.to(torch.float32)
 
-            # 确保UV索引类型为int32
+            # make sure UV indices are int32
             if self.uv_idx.dtype == torch.int64:
                 self.uv_idx = self.uv_idx.to(torch.int32)
         else:
@@ -801,17 +801,17 @@ class MeshRender:
         v1 = self.vtx_pos[self.pos_idx[:, 1], :]
         v2 = self.vtx_pos[self.pos_idx[:, 2], :]
 
-        # 计算两个边向量
+        # compute the two edge vectors
         edge1 = v1 - v0
         edge2 = v2 - v0
 
-        # 计算叉积的模长的一半即为面积
+        # half the magnitude of the cross product is the area
         areas = torch.norm(torch.cross(edge1, edge2, dim=-1), dim=-1) * 0.5
 
         areas = areas.cpu().numpy()
 
         if from_one_index:
-            # 在数组前面插入一个0,因为三角片索引是从1开始的
+            # insert a 0 at the front of the array because face indices start at 1
             areas = np.insert(areas, 0, 0)
 
         return areas
@@ -831,7 +831,7 @@ class MeshRender:
         vtx_uv = self.vtx_uv.cpu().numpy()
         uv_idx = self.uv_idx.cpu().numpy()
 
-        # 坐标变换的逆变换
+        # inverse of the coordinate transform
         if not normalize:
             vtx_pos = vtx_pos / self.mesh_normalize_scale_factor
             vtx_pos = vtx_pos + self.mesh_normalize_scale_center
@@ -1199,12 +1199,12 @@ class MeshRender:
 
             visible_mask = visible_mask.permute(2, 0, 1).unsqueeze(0).float()
             visible_mask = F.conv2d(1.0 - visible_mask, kernel, padding=kernel_size // 2)
-            visible_mask = 1.0 - (visible_mask > 0).float()  # 二值化
+            visible_mask = 1.0 - (visible_mask > 0).float()  # binarize
             visible_mask = visible_mask.squeeze(0).permute(1, 2, 0)
 
             sketch_image = sketch_image.permute(2, 0, 1).unsqueeze(0)
             sketch_image = F.conv2d(sketch_image, kernel, padding=kernel_size // 2)
-            sketch_image = (sketch_image > 0).float()  # 二值化
+            sketch_image = (sketch_image > 0).float()  # binarize
             sketch_image = sketch_image.squeeze(0).permute(1, 2, 0)
             visible_mask = visible_mask * (sketch_image < 0.5)
 

@@ -221,7 +221,7 @@ def extract_near_surface_volume_fn(input_tensor: torch.Tensor, alpha: float):
         if shift == 0:
             return t.clone()
 
-        pad_dims = [0, 0, 0, 0, 0, 0]  # [x_front，x_back，y_front，y_back，z_front，z_back]
+        pad_dims = [0, 0, 0, 0, 0, 0]  # [x_front, x_back, y_front, y_back, z_front, z_back]
 
         if axis == 0:  # x axis
             pad_idx = 0 if shift > 0 else 1
