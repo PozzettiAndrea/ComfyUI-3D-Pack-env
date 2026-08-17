@@ -31,7 +31,6 @@ from diffusers import (
     KDPM2DiscreteScheduler,
 )
 
-from huggingface_hub import snapshot_download
 
 from plyfile import PlyData
 import trimesh
@@ -39,6 +38,9 @@ from PIL import Image
 
 from . import model_cache
 from .mesh_processer.interop import wire_in as _wire_in, wire_out as _wire_out
+from .shared_utils.model_downloader import (
+    get_model_dir, download_file, download_repo, download_url,
+)
 from .mesh_processer.mesh import Mesh
 from .mesh_processer.mesh_utils import (
     ply_to_points_cloud, 
@@ -163,6 +165,13 @@ NODES_PATH = os.path.dirname(os.path.realpath(__file__))
 # Gen_3D_Modules/ and MVs_Algorithms/ all stay at the root, so ROOT_PATH keeps
 # its original meaning and every path derived from it below is unchanged.
 ROOT_PATH = os.path.dirname(NODES_PATH)
+
+# Still nodes/Checkpoints/ for now. Moving weights to ComfyUI's models/ tree is
+# the right end state, but it cannot happen before the download policy is fixed:
+# HF_DOWNLOAD_IGNORE below excludes *.json/*.yaml/*.py from the snapshot, so the
+# configs and custom_pipeline code that from_pretrained needs come from git, out
+# of this same directory. Repoint this alone and those downloads land next to no
+# model_index.json and fail.
 CKPT_ROOT_PATH = os.path.join(NODES_PATH, "Checkpoints")
 CKPT_DIFFUSERS_PATH = os.path.join(CKPT_ROOT_PATH, "Diffusers")
 CONFIG_ROOT_PATH = os.path.join(NODES_PATH, "Configs")
@@ -1418,6 +1427,10 @@ class Fitting_Mesh_With_Multiview_Images:
 
 class Load_Triplane_Gaussian_Transformers:
     
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Triplane Gaussian Transformers"
+
     checkpoints_dir = "TriplaneGaussian"
     default_ckpt_name = "model_lvis_rel.ckpt"
     default_repo_id = "VAST-AI/TriplaneGaussian"
@@ -1508,7 +1521,11 @@ class Triplane_Gaussian_Transformers:
     
 class Load_Diffusers_Pipeline:
     
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Diffusers Pipeline"
+
     @classmethod
+
     def INPUT_TYPES(cls):
         return {
             "required": {
@@ -1538,7 +1555,7 @@ class Load_Diffusers_Pipeline:
         # node as the thing that reports network failures), but do NOT build
         # the pipeline -- that happens in resolve_diffusers_pipe on first use.
         ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, repo_id)
-        snapshot_download(repo_id=repo_id, local_dir=ckpt_download_dir, force_download=force_download, repo_type="model", ignore_patterns=HF_DOWNLOAD_IGNORE)
+        download_repo(repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
 
         return (model_cache.recipe(
             "diffusers_pipe",
@@ -1817,6 +1834,10 @@ class MVDream_Model:
     
 class Load_Large_Multiview_Gaussian_Model:
     
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Large Multiview Gaussian Model"
+
     checkpoints_dir = "LGM"
     default_ckpt_name = "model_fp16.safetensors"
     default_repo_id = "ashawkey/LGM"
@@ -1970,6 +1991,10 @@ class Convert_3DGS_to_Mesh_with_NeRF_and_Marching_Cubes:
         return(_wire_out(converter.get_mesh()), imgs, alphas)
     
 class Load_TripoSR_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load TripoSR Model"
+
     checkpoints_dir = "TripoSR"
     default_ckpt_name = "model.ckpt"
     default_repo_id = "stabilityai/TripoSR"
@@ -2065,6 +2090,10 @@ class TripoSR:
         return image
     
 class Load_SF3D_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load SF3D Model"
+
     checkpoints_dir = "StableFast3D"
     default_ckpt_name = "model.safetensors"
     default_repo_id = "stabilityai/stable-fast-3d"
@@ -2186,6 +2215,10 @@ class StableFast3D:
         return batched
     
 class Load_CRM_MVDiffusion_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load CRM MVDiffusion Model"
+
     checkpoints_dir = "CRM"
     default_ckpt_name = ["pixel-diffusion.pth", "ccm-diffusion.pth"]
     default_conf_name = ["sd_v2_base_ipmv_zero_SNR.yaml", "sd_v2_base_ipmv_chin8_zero_snr.yaml"]
@@ -2369,6 +2402,10 @@ class CRM_CCMs_MVDiffusion_Model:
         return(multiview_CCMs, )
     
 class Load_Convolutional_Reconstruction_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Convolutional Reconstruction Model"
+
     checkpoints_dir = "CRM"
     default_ckpt_name = "CRM.pth"
     default_repo_id = "Zhengyi/CRM"
@@ -2504,6 +2541,10 @@ class Zero123Plus_Diffusion_Model:
         return (multiview_images, orbit_camposes)
     
 class Load_InstantMesh_Reconstruction_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load InstantMesh Reconstruction Model"
+
     checkpoints_dir = "InstantMesh"
     default_ckpt_names = ["instant_mesh_large.ckpt", "instant_mesh_base.ckpt", "instant_nerf_large.ckpt", "instant_nerf_base.ckpt"]
     default_repo_id = "TencentARC/InstantMesh"
@@ -3198,6 +3239,10 @@ class Convert_Vertex_Color_To_Texture:
         return (_wire_out(mesh),)
     
 class Load_CharacterGen_MVDiffusion_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load CharacterGen MVDiffusion Model"
+
     checkpoints_dir = "CharacterGen"
     default_repo_id = "zjpshadow/CharacterGen"
     config_path = "CharacterGen_configs/Stage_2D_infer.yaml"
@@ -3223,7 +3268,7 @@ class Load_CharacterGen_MVDiffusion_Model:
     
     def load_model(self, force_download):
         # Download checkpoints
-        snapshot_download(repo_id=self.default_repo_id, local_dir=self.checkpoints_dir_abs, force_download=force_download, repo_type="model", ignore_patterns=HF_DOWNLOAD_IGNORE)
+        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
         # Load pre-trained models
         character_mv_gen_pipe = Inference2D_API(checkpoint_root_path=self.checkpoints_dir_abs, **OmegaConf.load(self.config_root_path_abs))
         
@@ -3297,6 +3342,10 @@ class CharacterGen_MVDiffusion_Model:
         return (multiview_images, orbit_camposes)
     
 class Load_CharacterGen_Reconstruction_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load CharacterGen Reconstruction Model"
+
     checkpoints_dir = "CharacterGen"
     default_repo_id = "zjpshadow/CharacterGen"
     config_path = "CharacterGen_configs/Stage_3D_infer.yaml"
@@ -3322,7 +3371,7 @@ class Load_CharacterGen_Reconstruction_Model:
     
     def load_model(self, force_download):
         # Download checkpoints
-        snapshot_download(repo_id=self.default_repo_id, local_dir=self.checkpoints_dir_abs, force_download=force_download, repo_type="model", ignore_patterns=HF_DOWNLOAD_IGNORE)
+        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
         # Load pre-trained models
         character_lrm_pipe = Inference3D_API(checkpoint_root_path=self.checkpoints_dir_abs, cfg=load_config_cg3d(self.config_root_path_abs))
         
@@ -3363,6 +3412,10 @@ class CharacterGen_Reconstruction_Model:
         return (_wire_out(mesh),)
     
 class Load_Craftsman_Shape_Diffusion_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Craftsman Shape Diffusion Model"
+
     checkpoints_dir = "Craftsman"
     default_repo_id = "wyysf/CraftsMan"
     default_ckpt_name = "image-to-shape-diffusion/clip-mvrgb-modln-l256-e64-ne8-nd16-nl6-aligned-vae/model.ckpt"
@@ -3510,6 +3563,10 @@ class OrbitPoses_JK:
         return (orbit_camposes,)
     
 class Load_CRM_T2I_V2_Models:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load CRM T2I V2 Models"
+
     crm_checkpoints_dir = "CRM"
     t2i_v2_checkpoints_dir = "T2I_V2"
     default_crm_ckpt_name = ["pixel-diffusion.pth"]
@@ -3657,6 +3714,10 @@ class CRM_T2I_V2_Models:
         return (multiview_images, orbit_camposes)
     
 class Load_CRM_T2I_V3_Models:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load CRM T2I V3 Models"
+
     crm_checkpoints_dir = "CRM"
     crm_t2i_v3_checkpoints_dir = "CRM_T2I_V3"
     t2i_v2_checkpoints_dir = "T2I_V2"
@@ -3908,6 +3969,10 @@ class Hunyuan3D_V1_MVDiffusion_Model:
         return (multiview_image_grid, condition_image)
     
 class Load_Hunyuan3D_V1_Reconstruction_Model:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Hunyuan3D V1 Reconstruction Model"
+
     checkpoints_dir = "svrm/svrm.safetensors"
     default_repo_id = "tencent/Hunyuan3D-1"
     config_path = "Hunyuan3D_V1_svrm_config.yaml"
@@ -3934,7 +3999,7 @@ class Load_Hunyuan3D_V1_Reconstruction_Model:
     def load_model(self, force_download, use_lite):
         # Download checkpoints
         ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, self.default_repo_id)
-        snapshot_download(repo_id=self.default_repo_id, local_dir=ckpt_download_dir, force_download=force_download, repo_type="model", ignore_patterns=HF_DOWNLOAD_IGNORE)
+        download_repo(self.default_repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
         # Load pre-trained models
         mv23d_ckt_path = os.path.join(ckpt_download_dir, self.checkpoints_dir)
         hunyuan3d_v1_reconstruction_model = Views2Mesh(self.config_root_path_abs, mv23d_ckt_path, DEVICE, use_lite=use_lite)
@@ -4311,6 +4376,10 @@ class TripoSG_Scribble_Model:
         return (_wire_out(mesh),)
 
 class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Hunyuan3D V2 ShapeGen Pipeline"
+
     CATEGORY      = "Comfy3D/Algorithm"
     RETURN_TYPES  = ("DIFFUSERS_PIPE",)
     RETURN_NAMES  = ("shapegen_pipe",)
@@ -4342,18 +4411,14 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
 
     @staticmethod
     def _ensure_weights(repo: str, subfolder: str, use_safetensors: bool):
-        base_dir = os.path.join(CKPT_DIFFUSERS_PATH, f"{Load_Hunyuan3D_V2_ShapeGen_Pipeline._REPO_ID_BASE}/{repo}")
+        cls = Load_Hunyuan3D_V2_ShapeGen_Pipeline
         ckpt_file = "model.fp16.safetensors" if use_safetensors else "model.fp16.ckpt"
-        ckpt_path = os.path.join(base_dir, subfolder, ckpt_file)
-
-        if not os.path.exists(ckpt_path):
-            snapshot_download(
-                repo_id=f"{Load_Hunyuan3D_V2_ShapeGen_Pipeline._REPO_ID_BASE}/{repo}",
-                repo_type="model",
-                local_dir=base_dir,
-                resume_download=True,
-                ignore_patterns = HF_DOWNLOAD_IGNORE
-            )
+        download_repo(
+            f"{cls._REPO_ID_BASE}/{repo}",
+            CKPT_DIFFUSERS_PATH, f"{cls._REPO_ID_BASE}/{repo}",
+            ignore_patterns=HF_DOWNLOAD_IGNORE,
+            requires=[f"{subfolder}/{ckpt_file}"],
+        )
 
     @staticmethod
     def _build_pipe(repo: str, subfolder: str, use_safetensors: bool, flash_vdm: bool):
@@ -4391,6 +4456,10 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         return (pipe,)
     
 class Load_Hunyuan3D_V2_TexGen_Pipeline: 
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Hunyuan3D V2 TexGen Pipeline"
+
     CATEGORY     = "Comfy3D/Algorithm"
     RETURN_TYPES = ("DIFFUSERS_PIPE",)
     RETURN_NAMES = ("texgen_pipe",)
@@ -4408,18 +4477,21 @@ class Load_Hunyuan3D_V2_TexGen_Pipeline:
         }}
 
     def _download_required_weights(self, repo_id, subfolder):
-        ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, repo_id)
-        os.makedirs(ckpt_download_dir, exist_ok=True)
-
-        # Only download the "delight" and target submodel directories
-        for folder in ["hunyuan3d-delight-v2-0", subfolder]:
-            snapshot_download(
-                repo_id=repo_id,
-                local_dir=ckpt_download_dir,
-                repo_type="model",
-                force_download=False,
-                ignore_patterns=HF_DOWNLOAD_IGNORE
-            )
+        # The loop this replaces iterated over the two folder names but never
+        # used the loop variable and passed no allow_patterns, so it fetched the
+        # whole repo -- twice -- despite the comment saying otherwise. One call,
+        # scoped to the two directories that are actually wanted.
+        # No `requires` here on purpose: the exact weight filenames vary by
+        # submodel, and a directory-existence check would skip a partially
+        # downloaded folder. snapshot_download is cheap once everything is
+        # cached, which is what the original relied on.
+        folders = ["hunyuan3d-delight-v2-0", subfolder]
+        return download_repo(
+            repo_id,
+            CKPT_DIFFUSERS_PATH, repo_id,
+            ignore_patterns=HF_DOWNLOAD_IGNORE,
+            allow_patterns=[f"{f}/**" for f in folders],
+        )
 
     def load(self, generation_mode):
         repo_id, subfolder = self.MODEL2REPO[generation_mode]
@@ -5236,6 +5308,10 @@ class MVAdapter_Texture_Projection:
             raise e
 
 class Load_Hunyuan3D_21_ShapeGen_Pipeline:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Hunyuan3D 21 ShapeGen Pipeline"
+
     """Load Hunyuan3D-2.1 Shape Generation Pipeline"""
     
     CATEGORY = "Comfy3D/Algorithm/Hunyuan3D-2.1"
@@ -5256,40 +5332,17 @@ class Load_Hunyuan3D_21_ShapeGen_Pipeline:
 
     @staticmethod
     def _ensure_weights(subfolder: str):
-        repo_id = f"{Load_Hunyuan3D_21_ShapeGen_Pipeline._REPO_ID_BASE}/{Load_Hunyuan3D_21_ShapeGen_Pipeline._REPO_NAME}"
-        safe_repo_name = Load_Hunyuan3D_21_ShapeGen_Pipeline._REPO_NAME.replace(".", "_")
-        base_dir = os.path.join(CKPT_DIFFUSERS_PATH, f"{Load_Hunyuan3D_21_ShapeGen_Pipeline._REPO_ID_BASE}/{safe_repo_name}")
-        
-        required_files = [
-            "hunyuan3d-dit-v2-1/model.fp16.ckpt",
-            "hunyuan3d-vae-v2-1/model.fp16.ckpt"
-        ]
-        
-        files_to_download = []
-        
-        for file_path in required_files:
-            full_file_path = os.path.join(base_dir, file_path)
-            if not os.path.exists(full_file_path):
-                files_to_download.append(file_path)
-        
-        if files_to_download:
-            for file_path in files_to_download:
-                try:
-                    from huggingface_hub import hf_hub_download
-                    downloaded_path = hf_hub_download(
-                        repo_id=repo_id,
-                        filename=file_path,
-                        local_dir=base_dir,
-                        repo_type="model",
-                        resume_download=True
-                    )
-                except Exception as e:
-                    print(f"Loading error {file_path}: {e}")
-            print(f"Loading Hunyuan3D-2.1 ShapeGen completed")
-        else:
-            print(f"Hunyuan3D-2.1 ShapeGen weights already loaded")
-        
-        return base_dir
+        cls = Load_Hunyuan3D_21_ShapeGen_Pipeline
+        # "." in the repo name would nest a directory level on disk.
+        safe_repo_name = cls._REPO_NAME.replace(".", "_")
+        return download_files(
+            f"{cls._REPO_ID_BASE}/{cls._REPO_NAME}",
+            [
+                "hunyuan3d-dit-v2-1/model.fp16.ckpt",
+                "hunyuan3d-vae-v2-1/model.fp16.ckpt",
+            ],
+            CKPT_DIFFUSERS_PATH, f"{cls._REPO_ID_BASE}/{safe_repo_name}",
+        )
 
     def load(self, subfolder):
         base_dir = self._ensure_weights(subfolder)
@@ -5304,6 +5357,10 @@ class Load_Hunyuan3D_21_ShapeGen_Pipeline:
         return (pipeline,)
 
 class Load_Hunyuan3D_21_TexGen_Pipeline:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load Hunyuan3D 21 TexGen Pipeline"
+
     """Load Hunyuan3D-2.1 Texture Generation Pipeline"""
     
     CATEGORY = "Comfy3D/Algorithm/Hunyuan3D-2.1"
@@ -5329,65 +5386,22 @@ class Load_Hunyuan3D_21_TexGen_Pipeline:
 
     @staticmethod 
     def _ensure_weights():
-        repo_id = f"{Load_Hunyuan3D_21_TexGen_Pipeline._REPO_ID_BASE}/{Load_Hunyuan3D_21_TexGen_Pipeline._REPO_NAME}"
-        safe_repo_name = Load_Hunyuan3D_21_TexGen_Pipeline._REPO_NAME.replace(".", "_")
-        base_dir = os.path.join(CKPT_DIFFUSERS_PATH, f"{Load_Hunyuan3D_21_TexGen_Pipeline._REPO_ID_BASE}/{safe_repo_name}")
-        
+        cls = Load_Hunyuan3D_21_TexGen_Pipeline
+        safe_repo_name = cls._REPO_NAME.replace(".", "_")
         target_folder = "hunyuan3d-paintpbr-v2-1"
-        required_files = [
-            f"{target_folder}/image_encoder/model.safetensors",
-            f"{target_folder}/text_encoder/pytorch_model.bin",
-            f"{target_folder}/unet/diffusion_pytorch_model.bin",
-            f"{target_folder}/vae/diffusion_pytorch_model.bin"
-        ]
-        
-        files_missing = []
-        
-        for file_path in required_files:
-            full_file_path = os.path.join(base_dir, file_path)
-            if not os.path.exists(full_file_path):
-                files_missing.append(file_path)
-        
-        if files_missing:
-            print(f"Loading Hunyuan3D-2.1 TexGen folder: {target_folder}")
-            print(f"Missing files: {len(files_missing)}")
-            snapshot_download(
-                repo_id=repo_id,
-                repo_type="model", 
-                local_dir=base_dir,
-                resume_download=True,
-                ignore_patterns=HF_DOWNLOAD_IGNORE,
-                allow_patterns=[f"{target_folder}/**"]
-            )
-            print(f"Hunyuan3D-2.1 TexGen {target_folder} downloaded successfully")
-        else:
-            print(f"Hunyuan3D-2.1 TexGen weights already loaded")
+        return download_repo(
+            f"{cls._REPO_ID_BASE}/{cls._REPO_NAME}",
+            CKPT_DIFFUSERS_PATH, f"{cls._REPO_ID_BASE}/{safe_repo_name}",
+            ignore_patterns=HF_DOWNLOAD_IGNORE,
+            allow_patterns=[f"{target_folder}/**"],
+            requires=[
+                f"{target_folder}/image_encoder/model.safetensors",
+                f"{target_folder}/text_encoder/pytorch_model.bin",
+                f"{target_folder}/unet/diffusion_pytorch_model.bin",
+                f"{target_folder}/vae/diffusion_pytorch_model.bin",
+            ],
+        )
 
-        return base_dir
-
-    @staticmethod
-    def _ensure_realesrgan():
-        upscale_models_dir = os.path.join(ROOT_PATH, "..", "..", "models", "upscale_models")
-        realesrgan_path = os.path.join(upscale_models_dir, "RealESRGAN_x4plus.pth")
-        
-        if not os.path.exists(realesrgan_path):
-            print(f"RealESRGAN model not found, downloading from GitHub...")
-            os.makedirs(upscale_models_dir, exist_ok=True)
-            
-            import urllib.request
-            realesrgan_url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
-            
-            try:
-                print(f"Downloading RealESRGAN_x4plus.pth to {realesrgan_path}...")
-                urllib.request.urlretrieve(realesrgan_url, realesrgan_path)
-                print(f"RealESRGAN_x4plus.pth downloaded successfully")
-            except Exception as e:
-                print(f"Failed to download RealESRGAN_x4plus.pth: {e}")
-                raise
-        else:
-            print(f"Found existing RealESRGAN_x4plus.pth at {realesrgan_path}")
-        
-        return realesrgan_path
 
     def load(self, max_num_view, resolution, enable_mmgp):
         cache_key = (max_num_view, resolution, enable_mmgp)
@@ -5398,11 +5412,9 @@ class Load_Hunyuan3D_21_TexGen_Pipeline:
             return (self._cache[cache_key],)
 
         base_dir = self._ensure_weights()
-        realesrgan_path = self._ensure_realesrgan()
         
         # Configure pipeline
         conf = Hunyuan3DPaintConfig_2_1(max_num_view=max_num_view, resolution=resolution)
-        conf.realesrgan_ckpt_path = realesrgan_path
         conf.multiview_cfg_path = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
         conf.custom_pipeline = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/hunyuanpaintpbr")
 
@@ -5619,6 +5631,10 @@ class Hunyuan3D_21_TexGen:
 # --------------------- PARTCRAFTER ---------------------
 
 class Load_PartCrafter_Pipeline:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load PartCrafter Pipeline"
+
     """Load PartCrafter Pipeline"""
     
     CATEGORY = "Comfy3D/Algorithm/PartCrafter"
@@ -5636,36 +5652,17 @@ class Load_PartCrafter_Pipeline:
 
     @staticmethod
     def _ensure_weights():
-        safe_repo_name = Load_PartCrafter_Pipeline._REPO_ID.replace("/", "_")
-        base_dir = os.path.join(CKPT_DIFFUSERS_PATH, Load_PartCrafter_Pipeline._REPO_ID)
-        
-        required_files = [
-            "diffusion_pytorch_model.safetensors", 
-            "diffusion_pytorch_model.bin",
-        ]
-        
-        files_missing = []
-        
-        for file_path in required_files:
-            full_file_path = os.path.join(base_dir, file_path)
-            if not os.path.exists(full_file_path):
-                files_missing.append(file_path)
-        
-        if files_missing or not os.path.exists(base_dir):
-            print(f"Loading PartCrafter from {Load_PartCrafter_Pipeline._REPO_ID}...")
-            print(f"Missing files: {len(files_missing)}")
-            snapshot_download(
-                repo_id=Load_PartCrafter_Pipeline._REPO_ID,
-                repo_type="model", 
-                local_dir=base_dir,
-                resume_download=True,
-                ignore_patterns=HF_DOWNLOAD_IGNORE,
-            )
-            print(f"PartCrafter loaded successfully")
-        else:
-            print(f"PartCrafter weights already loaded")
-
-        return base_dir
+        # Weights only; configs and any custom_pipeline come from git, which is
+        # what HF_DOWNLOAD_IGNORE excludes from the snapshot.
+        return download_repo(
+            Load_PartCrafter_Pipeline._REPO_ID,
+            CKPT_DIFFUSERS_PATH, Load_PartCrafter_Pipeline._REPO_ID,
+            ignore_patterns=HF_DOWNLOAD_IGNORE,
+            requires=[
+                "diffusion_pytorch_model.safetensors",
+                "diffusion_pytorch_model.bin",
+            ],
+        )
 
     def load(self):
         base_dir = self._ensure_weights()
@@ -5822,6 +5819,10 @@ class PartCrafter_Generate:
 #------ partcrafter scene ---------------------
 
 class Load_PartCrafter_Scene_Pipeline:
+
+    # Announces in the UI that this node fetches weights if they are absent.
+    DISPLAY_NAME = "(Down)Load PartCrafter Scene Pipeline"
+
     """Load PartCrafter Scene Pipeline"""
     
     CATEGORY = "Comfy3D/Algorithm/PartCrafter"
@@ -5839,37 +5840,18 @@ class Load_PartCrafter_Scene_Pipeline:
 
     @staticmethod
     def _ensure_weights():
-        safe_repo_name = Load_PartCrafter_Scene_Pipeline._REPO_ID.replace("/", "_")
-        base_dir = os.path.join(CKPT_DIFFUSERS_PATH, Load_PartCrafter_Scene_Pipeline._REPO_ID)
-        
-        required_files = [
-            "model_index.json",
-            "transformer/diffusion_pytorch_model.safetensors", 
-            "vae/diffusion_pytorch_model.safetensors",
-        ]
-        
-        files_missing = []
-        
-        for file_path in required_files:
-            full_file_path = os.path.join(base_dir, file_path)
-            if not os.path.exists(full_file_path):
-                files_missing.append(file_path)
-        
-        if files_missing or not os.path.exists(base_dir):
-            print(f"Loading PartCrafter-Scene from {Load_PartCrafter_Scene_Pipeline._REPO_ID}...")
-            print(f"Missing files: {len(files_missing)}")
-            snapshot_download(
-                repo_id=Load_PartCrafter_Scene_Pipeline._REPO_ID,
-                repo_type="model", 
-                local_dir=base_dir,
-                resume_download=True,
-                ignore_patterns=HF_DOWNLOAD_IGNORE,
-            )
-            print(f"PartCrafter-Scene loaded successfully")
-        else:
-            print(f"PartCrafter-Scene weights already loaded")
-
-        return base_dir
+        # Weights only; configs and any custom_pipeline come from git, which is
+        # what HF_DOWNLOAD_IGNORE excludes from the snapshot.
+        return download_repo(
+            Load_PartCrafter_Scene_Pipeline._REPO_ID,
+            CKPT_DIFFUSERS_PATH, Load_PartCrafter_Scene_Pipeline._REPO_ID,
+            ignore_patterns=HF_DOWNLOAD_IGNORE,
+            requires=[
+                "model_index.json",
+                "transformer/diffusion_pytorch_model.safetensors",
+                "vae/diffusion_pytorch_model.safetensors",
+            ],
+        )
 
     def load(self):
         base_dir = self._ensure_weights()

@@ -207,7 +207,7 @@ class QKVMultiheadCrossAttention(nn.Module):
         n_data: Optional[int] = None,
         width=None,
         qk_norm=False,
-        norm_layer=nn.LayerNorm
+        norm_layer=ops.LayerNorm
     ):
         super().__init__()
         self.heads = heads
@@ -242,7 +242,7 @@ class MultiheadCrossAttention(nn.Module):
         qkv_bias: bool = True,
         n_data: Optional[int] = None,
         data_width: Optional[int] = None,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         qk_norm: bool = False,
         kv_cache: bool = False,
     ):
@@ -288,7 +288,7 @@ class ResidualCrossAttentionBlock(nn.Module):
         mlp_expand_ratio: int = 4,
         data_width: Optional[int] = None,
         qkv_bias: bool = True,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         qk_norm: bool = False
     ):
         super().__init__()
@@ -324,7 +324,7 @@ class QKVMultiheadAttention(nn.Module):
         n_ctx: int,
         width=None,
         qk_norm=False,
-        norm_layer=nn.LayerNorm
+        norm_layer=ops.LayerNorm
     ):
         super().__init__()
         self.heads = heads
@@ -354,7 +354,7 @@ class MultiheadAttention(nn.Module):
         width: int,
         heads: int,
         qkv_bias: bool,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         qk_norm: bool = False,
         drop_path_rate: float = 0.0
     ):
@@ -388,7 +388,7 @@ class ResidualAttentionBlock(nn.Module):
         width: int,
         heads: int,
         qkv_bias: bool = True,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         qk_norm: bool = False,
         drop_path_rate: float = 0.0,
     ):
@@ -421,7 +421,7 @@ class Transformer(nn.Module):
         layers: int,
         heads: int,
         qkv_bias: bool = True,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         qk_norm: bool = False,
         drop_path_rate: float = 0.0
     ):

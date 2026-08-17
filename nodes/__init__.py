@@ -41,7 +41,12 @@ for _name, _cls in inspect.getmembers(_nodes_module, inspect.isclass):
     if _cls.__module__ != _nodes_module.__name__:
         continue
     _display = _name.replace("_", " ")
+    # The mapping KEY is the node's identity in saved workflows, so it stays
+    # derived from the class name and must never change. DISPLAY_NAME only
+    # changes the label -- which is how a loader can announce that it downloads
+    # ("(Down)Load ...") without orphaning every graph that already uses it.
+    _label = getattr(_cls, "DISPLAY_NAME", _display)
     NODE_CLASS_MAPPINGS[f"[Comfy3D] {_display}"] = _cls
-    NODE_DISPLAY_NAME_MAPPINGS[f"[Comfy3D] {_display}"] = _display
+    NODE_DISPLAY_NAME_MAPPINGS[f"[Comfy3D] {_display}"] = _label
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

@@ -75,8 +75,13 @@ def resume_or_download_model_from_hf(checkpoints_dir_abs, repo_id, model_name, c
     ckpt_path = os.path.join(checkpoints_dir_abs, model_name)
     if not os.path.isfile(ckpt_path):
         cstr(f"[{class_name}] can't find checkpoint {ckpt_path}, will download it from repo {repo_id} instead").warning.print()
-        
-        from huggingface_hub import hf_hub_download
-        hf_hub_download(repo_id=repo_id, local_dir=checkpoints_dir_abs, filename=model_name, repo_type=repo_type)
+
+        # Routed through model_downloader so this shares one implementation with
+        # the rest of the pack: progress lands in the ComfyUI UI rather than only
+        # the console, and the destination is whatever folder_paths resolved.
+        from .model_downloader import download_file
+
+        return download_file(repo_id, model_name, checkpoints_dir_abs,
+                             repo_type=repo_type)
 
     return ckpt_path

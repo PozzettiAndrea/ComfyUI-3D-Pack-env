@@ -81,7 +81,7 @@ class Transformer1D(BaseModule):
         self.attention_head_dim = self.cfg.attention_head_dim
         inner_dim = self.num_attention_heads * self.attention_head_dim
 
-        linear_cls = nn.Linear
+        linear_cls = ops.Linear
 
         # 2. Define input layers
         self.in_channels = self.cfg.in_channels

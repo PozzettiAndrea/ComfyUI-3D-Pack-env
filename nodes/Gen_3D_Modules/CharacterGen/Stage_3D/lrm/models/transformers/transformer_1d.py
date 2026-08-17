@@ -73,7 +73,7 @@ class Transformer1D(BaseModule, MemoryEfficientAttentionMixin):
         self.attention_head_dim = self.cfg.attention_head_dim
         inner_dim = self.num_attention_heads * self.attention_head_dim
 
-        linear_cls = nn.Linear
+        linear_cls = ops.Linear
 
         if self.cfg.norm_type == "layer_norm" and (
             self.cfg.num_embeds_ada_norm is not None

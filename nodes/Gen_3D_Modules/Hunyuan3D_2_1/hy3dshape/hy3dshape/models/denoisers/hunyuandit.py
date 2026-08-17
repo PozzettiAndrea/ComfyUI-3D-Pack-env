@@ -147,7 +147,7 @@ class CrossAttention(nn.Module):
         num_heads,
         qkv_bias=True,
         qk_norm=False,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         with_decoupled_ca=False,
         decoupled_ca_dim=16,
         decoupled_ca_weight=1.0,
@@ -255,7 +255,7 @@ class Attention(nn.Module):
         num_heads,
         qkv_bias=True,
         qk_norm=False,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
     ):
         super().__init__()
         self.dim = dim
@@ -314,7 +314,7 @@ class HunYuanDiTBlock(nn.Module):
         text_states_dim=1024,
         use_flash_attn=False,
         qk_norm=False,
-        norm_layer=nn.LayerNorm,
+        norm_layer=ops.LayerNorm,
         qk_norm_layer=nn.RMSNorm,
         with_decoupled_ca=False,
         decoupled_ca_dim=16,
@@ -505,7 +505,7 @@ class HunYuanDiTPlain(nn.Module):
         self.num_heads = num_heads
 
         self.hidden_size = hidden_size
-        self.norm = nn.LayerNorm if norm_type == 'layer' else nn.RMSNorm
+        self.norm = ops.LayerNorm if norm_type == 'layer' else nn.RMSNorm
         self.qk_norm = nn.RMSNorm if qk_norm_type == 'rms' else nn.LayerNorm
         self.context_dim = context_dim
 

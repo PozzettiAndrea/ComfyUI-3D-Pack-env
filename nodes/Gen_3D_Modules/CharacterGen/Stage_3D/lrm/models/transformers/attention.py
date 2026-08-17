@@ -427,7 +427,7 @@ class FeedForward(nn.Module):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
-        linear_cls = nn.Linear
+        linear_cls = ops.Linear
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim)
@@ -495,7 +495,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        linear_cls = nn.Linear
+        linear_cls = ops.Linear
 
         self.proj = linear_cls(dim_in, dim_out * 2)
 

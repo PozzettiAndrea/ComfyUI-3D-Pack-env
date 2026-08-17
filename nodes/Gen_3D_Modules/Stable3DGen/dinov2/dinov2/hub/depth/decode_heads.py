@@ -366,7 +366,7 @@ class ConvModule(nn.Module):
         dilation=1,
         groups=1,
         bias="auto",
-        conv_layer=nn.Conv2d,
+        conv_layer=ops.Conv2d,
         norm_layer=None,
         act_layer=nn.ReLU,
         inplace=True,

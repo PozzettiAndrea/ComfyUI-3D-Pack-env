@@ -195,7 +195,7 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        linear_cls = nn.Linear
+        linear_cls = ops.Linear
 
         self.linear_cls = linear_cls
         self.to_q = linear_cls(query_dim, self.inner_dim, bias=bias)

@@ -85,8 +85,8 @@ class Transformer2D(BaseModule, MemoryEfficientAttentionMixin):
         self.attention_head_dim = self.cfg.attention_head_dim
         inner_dim = self.num_attention_heads * self.attention_head_dim
 
-        conv_cls = nn.Conv2d
-        linear_cls = nn.Linear
+        conv_cls = ops.Conv2d
+        linear_cls = ops.Linear
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
