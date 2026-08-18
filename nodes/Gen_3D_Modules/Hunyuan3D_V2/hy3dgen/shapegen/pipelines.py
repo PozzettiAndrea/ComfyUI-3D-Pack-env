@@ -601,6 +601,18 @@ class Hunyuan3DDiTPipeline:
             guidance_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.model.guidance_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
+
+        # tqdm goes to the worker's stdout, which the ComfyUI UI never sees;
+        # mirror it into the node's progress bar, and give the stop button a
+        # chance to land -- this loop is the bulk of a shape generation.
+        #
+        # Deliberately OUTSIDE the guidance branch above: the update() call is
+        # in the sampling loop unconditionally, so building the bar only when
+        # guidance is enabled is a NameError on every other path.
+        import comfy.utils
+        import comfy.model_management
+        comfy_pbar = comfy.utils.ProgressBar(len(timesteps))
+
         with synchronize_timer('Diffusion Sampling'):
             for i, t in enumerate(tqdm(timesteps, disable=not enable_pbar, desc="Diffusion Sampling:", leave=False)):
                 # expand the latents if we are doing classifier free guidance
@@ -627,6 +639,9 @@ class Hunyuan3DDiTPipeline:
                     else:
                         noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+
+                comfy.model_management.throw_exception_if_processing_interrupted()
+                comfy_pbar.update(1)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 outputs = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)
@@ -734,6 +749,17 @@ class Hunyuan3DDiTFlowMatchingPipeline(Hunyuan3DDiTPipeline):
             guidance = torch.tensor([guidance_scale] * batch_size, device=device, dtype=dtype)
             # logger.info(f'Using guidance embed with scale {guidance_scale}')
 
+        # tqdm goes to the worker's stdout, which the ComfyUI UI never sees;
+        # mirror it into the node's progress bar, and give the stop button a
+        # chance to land -- this loop is the bulk of a shape generation.
+        #
+        # Deliberately OUTSIDE the guidance branch above: the update() call is
+        # in the sampling loop unconditionally, so building the bar only when
+        # guidance is enabled is a NameError on every other path.
+        import comfy.utils
+        import comfy.model_management
+        comfy_pbar = comfy.utils.ProgressBar(len(timesteps))
+
         with synchronize_timer('Diffusion Sampling'):
             for i, t in enumerate(tqdm(timesteps, disable=not enable_pbar, desc="Diffusion Sampling:")):
                 # expand the latents if we are doing classifier free guidance
@@ -750,6 +776,9 @@ class Hunyuan3DDiTFlowMatchingPipeline(Hunyuan3DDiTPipeline):
                 if do_classifier_free_guidance:
                     noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+
+                comfy.model_management.throw_exception_if_processing_interrupted()
+                comfy_pbar.update(1)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 outputs = self.scheduler.step(noise_pred, t, latents)

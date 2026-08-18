@@ -27,10 +27,36 @@ from ...utils import logger
 
 import comfy.ops
 
+
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
 # comfy.ops class has and no torch.nn class does.
 ops = comfy.ops.manual_cast
+
+
+def _decode_chunks(chunk_range, desc, enable_pbar=True):
+    """Iterate a decode loop's chunks, mirroring progress into ComfyUI.
+
+    Decoding is the long half of a shape generation -- at high octree
+    resolution these loops run a couple of thousand chunks -- and tqdm writes
+    to the isolated worker's stdout, which the browser never sees. Without
+    this the node sits at 0% for minutes and looks hung.
+
+    It is also the only point where a stop request can land during decoding:
+    the interrupt check runs per chunk, so Cancel takes effect within one
+    chunk instead of after the whole grid.
+
+    `chunk_range` must be sized (it is always a range here), since the bar
+    needs its total up front.
+    """
+    import comfy.model_management
+    import comfy.utils
+
+    pbar = comfy.utils.ProgressBar(len(chunk_range))
+    for start in tqdm(chunk_range, desc=desc, disable=not enable_pbar):
+        comfy.model_management.throw_exception_if_processing_interrupted()
+        yield start
+        pbar.update(1)
 
 
 def extract_near_surface_volume_fn(input_tensor: torch.Tensor, alpha: float):
@@ -176,8 +202,8 @@ class VanillaVolumeDecoder:
 
         # 2. latents to 3d volume
         batch_logits = []
-        for start in tqdm(range(0, xyz_samples.shape[0], num_chunks), desc=f"Volume Decoding",
-                          disable=not enable_pbar):
+        for start in _decode_chunks(range(0, xyz_samples.shape[0], num_chunks),
+                                    "Volume Decoding", enable_pbar):
             chunk_queries = xyz_samples[start: start + num_chunks, :]
             chunk_queries = repeat(chunk_queries, "p c -> b p c", b=batch_size)
             logits = geo_decoder(queries=chunk_queries, latents=latents)
@@ -237,8 +263,8 @@ class HierarchicalVolumeDecoding:
         # 2. latents to 3d volume
         batch_logits = []
         batch_size = latents.shape[0]
-        for start in tqdm(range(0, xyz_samples.shape[0], num_chunks),
-                          desc=f"Hierarchical Volume Decoding [r{resolutions[0] + 1}]"):
+        for start in _decode_chunks(range(0, xyz_samples.shape[0], num_chunks),
+                                    f"Hierarchical Volume Decoding [r{resolutions[0] + 1}]"):
             queries = xyz_samples[start: start + num_chunks, :]
             batch_queries = repeat(queries, "p c -> b p c", b=batch_size)
             logits = geo_decoder(queries=batch_queries, latents=latents)
@@ -270,8 +296,8 @@ class HierarchicalVolumeDecoding:
             next_points = (next_points * torch.tensor(resolution, dtype=next_points.dtype, device=device) +
                            torch.tensor(bbox_min, dtype=next_points.dtype, device=device))
             batch_logits = []
-            for start in tqdm(range(0, next_points.shape[0], num_chunks),
-                              desc=f"Hierarchical Volume Decoding [r{octree_depth_now + 1}]"):
+            for start in _decode_chunks(range(0, next_points.shape[0], num_chunks),
+                                        f"Hierarchical Volume Decoding [r{octree_depth_now + 1}]"):
                 queries = next_points[start: start + num_chunks, :]
                 batch_queries = repeat(queries, "p c -> b p c", b=batch_size)
                 logits = geo_decoder(queries=batch_queries.to(latents.dtype), latents=latents)
@@ -361,8 +387,8 @@ class FlashVDMVolumeDecoding:
         )
         batch_logits = []
         num_batchs = max(num_chunks // xyz_samples.shape[1], 1)
-        for start in tqdm(range(0, xyz_samples.shape[0], num_batchs),
-                          desc=f"FlashVDM Volume Decoding", disable=not enable_pbar):
+        for start in _decode_chunks(range(0, xyz_samples.shape[0], num_batchs),
+                                    "FlashVDM Volume Decoding", enable_pbar):
             queries = xyz_samples[start: start + num_batchs, :]
             batch = queries.shape[0]
             batch_latents = repeat(latents.squeeze(0), "p c -> b p c", b=batch)
