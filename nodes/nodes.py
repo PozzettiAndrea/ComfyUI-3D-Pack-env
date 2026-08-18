@@ -161,29 +161,6 @@ def _ensure_upscale_model(url, filename):
     return filename
 
 
-def _diffusers_step_progress(total):
-    """A `callback_on_step_end` that drives ComfyUI's progress bar.
-
-    Diffusers pipelines print a tqdm bar to the worker's stdout, which the
-    ComfyUI UI never sees -- so a 50-step sample looks like a frozen node.
-    TRELLIS2 solves the same problem by calling ProgressBar(steps) around its
-    sampler loop (trellis2/samplers/flow_euler.py:141); this is the diffusers
-    equivalent, using the hook the pipeline already exposes.
-
-    MUST return a dict: the pipeline does callback_outputs.pop("latents", ...)
-    on the return value, so returning None raises AttributeError mid-sample.
-    An empty dict leaves every tensor untouched.
-    """
-    pbar = _comfy_progress_bar(total)
-
-    def _on_step_end(_pipe, _i, _t, _kwargs):
-        if pbar is not None:
-            pbar.update(1)
-        return {}
-
-    return _on_step_end
-
-
 def _alias_model_index_libraries(base_dir):
     """Make a model_index.json's vendored `library` names importable.
 
@@ -299,8 +276,42 @@ SUPPORTED_CHECKPOINTS_EXTENSIONS = (
 
 WEIGHT_DTYPE = torch.float16
 
-DEVICE_STR = "cuda" if torch.cuda.is_available() else "cpu"
-DEVICE = torch.device(DEVICE_STR)
+
+def get_device():
+    """The device ComfyUI wants us on, resolved on every call.
+
+    This used to be a module-level constant:
+
+        DEVICE_STR = "cuda" if torch.cuda.is_available() else "cpu"
+        DEVICE = torch.device(DEVICE_STR)
+
+    which is a private reimplementation of get_torch_device() that gets the
+    answer wrong. It ignores --cpu, --gpu-only and --directml, never returns
+    mps/xpu/npu/mlu, and cannot follow a device change because it is frozen at
+    import. No sibling pack in this tree defines such a constant; they all call
+    get_torch_device() at the point of use (e.g. TRELLIS2 stages.py:261,
+    DepthAnythingV3 nodes_inference.py:80, SAM3 _model_cache.py:38).
+    """
+    import comfy.model_management
+
+    return comfy.model_management.get_torch_device()
+
+
+def get_device_str():
+    """get_device() as a string, for third-party APIs that want one."""
+    return str(get_device())
+
+
+def get_autocast_device_type():
+    """The device TYPE for torch.autocast -- "cuda", not "cuda:0".
+
+    get_device_str() now returns an indexed device, which torch.autocast happens
+    to accept today but is not what it documents. Native has a helper for exactly
+    this (model_management.get_autocast_device, :1275), which returns dev.type.
+    """
+    import comfy.model_management
+
+    return comfy.model_management.get_autocast_device(get_device())
 
 # Excluded from every snapshot_download. The config/code entries are the point:
 # *.yaml/*.json/*.py are pinned in git under model_configs/ and reviewed there,
@@ -785,10 +796,10 @@ class Fast_Clean_Mesh:
     def clean_mesh(self, mesh, apply_smooth, smooth_step, apply_sub_divide, sub_divide_threshold):
 
         mesh = _wire_in(mesh)
-        meshes = simple_clean_mesh(to_pyml_mesh(mesh.v, mesh.f), apply_smooth=apply_smooth, stepsmoothnum=smooth_step, apply_sub_divide=apply_sub_divide, sub_divide_threshold=sub_divide_threshold).to(DEVICE)
+        meshes = simple_clean_mesh(to_pyml_mesh(mesh.v, mesh.f), apply_smooth=apply_smooth, stepsmoothnum=smooth_step, apply_sub_divide=apply_sub_divide, sub_divide_threshold=sub_divide_threshold).to(get_device())
         vertices, faces, _ = from_py3d_mesh(meshes)
 
-        mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        mesh = Mesh(v=vertices, f=faces, device=get_device())
 
         return (_wire_out(mesh),)
     
@@ -816,7 +827,7 @@ class Decimate_Mesh:
     def process_mesh(self, mesh, target, remesh, optimalplacement):
         mesh = _wire_in(mesh)
         vertices, faces = decimate_mesh(mesh.v.detach().cpu().numpy(), mesh.f.detach().cpu().numpy(), target, remesh, optimalplacement)
-        mesh.v, mesh.f = torch.from_numpy(vertices).to(DEVICE), torch.from_numpy(faces).to(torch.int64).to(DEVICE)
+        mesh.v, mesh.f = torch.from_numpy(vertices).to(get_device()), torch.from_numpy(faces).to(torch.int64).to(get_device())
         mesh.auto_normal()
         return (_wire_out(mesh),)
 
@@ -1796,11 +1807,17 @@ def _build_diffusers_pipe(config):
     # and diffusers refuses to exec it without this. The file is TRACKED IN THIS
     # REPO and HF_DOWNLOAD_IGNORE lists "*.py", so a download can never replace
     # it -- what runs is pack-pinned code, not something fetched at load time.
+    # Cast dtype, do NOT place on device: comfy/sd.py does the same
+    # (`first_stage_model.to(self.vae_dtype)`, then the module goes to a
+    # ModelPatcher). model_cache.managed() wraps this so load_models_gpu()
+    # chooses placement -- that is what makes eviction and partial loading
+    # possible. Moving here spends the VRAM before ComfyUI is asked if
+    # there is room, which is where every OOM in the 20:05 log was raised.
     pipe = diffusers_pipeline_class.from_pretrained(
         ckpt_path,
         torch_dtype=WEIGHT_DTYPE,
         trust_remote_code=True,
-    ).to(DEVICE, WEIGHT_DTYPE)
+    )
 
     _try_enable_xformers(pipe)
 
@@ -1819,7 +1836,7 @@ def _build_diffusers_pipe(config):
             state_dict = torch.load(ckpt_path, map_location='cpu')
             pipe.unet.load_state_dict(state_dict, strict=True)
             _try_enable_xformers(pipe)
-            pipe = pipe.to(DEVICE)
+            pipe = pipe.to(get_device())
         elif op["op"] == "unique3d_unet":
             _apply_unique3d_unet(pipe, op["config_name"])
         else:
@@ -1851,7 +1868,12 @@ def resolve_diffusers_pipe(config):
     # managed(), not resolve(): a pipeline's unet/vae/text_encoder each get a
     # ModelPatcher, so ComfyUI can evict them like any checkpoint. resolve()
     # would hold them in a plain dict that unload_all_models() cannot reach.
-    return model_cache.managed(kind, config, builder)
+    # reloadable=True: this resolver runs on EVERY execution of every consumer,
+    # so if the model has been offloaded to make room, the load_models_gpu()
+    # inside managed() brings it straight back. That property is what makes it
+    # safe for other models to evict this one. Loaders that hand a live object
+    # to a consumer do not have it, and are left resident.
+    return model_cache.managed(kind, config, builder, reloadable=True)
 
 
 # Same dispatch under an honest name. _PIPE_BUILDERS is keyed by `kind`, not by
@@ -2187,12 +2209,12 @@ class Large_Multiview_Gaussian_Model:
     @torch.no_grad()
     def run_LGM(self, multiview_images, lgm_model):
         lgm_model = resolve_model_recipe(lgm_model)
-        ref_image_torch = prepare_torch_img(multiview_images, lgm_model.opt.input_size, lgm_model.opt.input_size, DEVICE_STR) # [4, 3, 256, 256]
+        ref_image_torch = prepare_torch_img(multiview_images, lgm_model.opt.input_size, lgm_model.opt.input_size, get_device_str()) # [4, 3, 256, 256]
         ref_image_torch = TF.normalize(ref_image_torch, IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
-        rays_embeddings = lgm_model.prepare_default_rays(DEVICE_STR)
+        rays_embeddings = lgm_model.prepare_default_rays(get_device_str())
         ref_image_torch = torch.cat([ref_image_torch, rays_embeddings], dim=1).unsqueeze(0) # [1, 4, 9, 256, 256]
         
-        with torch.autocast(device_type=DEVICE_STR, dtype=WEIGHT_DTYPE):
+        with torch.autocast(device_type=get_autocast_device_type(), dtype=WEIGHT_DTYPE):
             # generate gaussians
             gaussians = lgm_model.forward_gaussians(ref_image_torch)
         
@@ -2370,7 +2392,7 @@ class TripoSR:
         image = self.fill_background(image)
         image = image.convert('RGB')
         
-        scene_codes = tsr_model([image], DEVICE)
+        scene_codes = tsr_model([image], get_device())
         meshes = tsr_model.extract_mesh(scene_codes, resolution=geometry_extract_resolution, threshold=marching_cude_threshold)
         mesh = Mesh.load_trimesh(given_mesh=meshes[0])
 
@@ -2475,7 +2497,7 @@ class StableFast3D:
     def run_SF3D(self, sf3d_model, reference_image, reference_mask, texture_resolution, remesh_option):
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
         
-        with torch.autocast(device_type=DEVICE_STR, dtype=WEIGHT_DTYPE):
+        with torch.autocast(device_type=get_autocast_device_type(), dtype=WEIGHT_DTYPE):
             model_batch = self.create_batch(single_image)
             model_batch = {k: v.cuda() for k, v in model_batch.items()}
             trimesh_mesh, _ = sf3d_model.generate_mesh(
@@ -2585,11 +2607,11 @@ class Load_CRM_MVDiffusion_Model:
 
         crm_mvdiffusion_model = instantiate_from_config(crm_config.model)
         crm_mvdiffusion_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
-        crm_mvdiffusion_model = crm_mvdiffusion_model.to(DEVICE).to(WEIGHT_DTYPE)
-        crm_mvdiffusion_model.device = DEVICE
+        crm_mvdiffusion_model = crm_mvdiffusion_model.to(get_device()).to(WEIGHT_DTYPE)
+        crm_mvdiffusion_model.device = get_device()
         
         crm_mvdiffusion_sampler = get_obj_from_str(crm_config.sampler.target)(
-            crm_mvdiffusion_model, device=DEVICE, dtype=WEIGHT_DTYPE, **crm_config.sampler.params
+            crm_mvdiffusion_model, device=get_device(), dtype=WEIGHT_DTYPE, **crm_config.sampler.params
         )
         
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
@@ -2820,7 +2842,7 @@ class Convolutional_Reconstruction_Model:
         np_imgs = np.concatenate(multiview_images.cpu().numpy(), 1) # (256, 256*6==1536, 3)
         np_xyzs = np.concatenate(multiview_CCMs.cpu().numpy(), 1) # (256, 1536, 3)
         
-        mesh = CRMSampler.generate3d(crm_model, np_imgs, np_xyzs, DEVICE)
+        mesh = CRMSampler.generate3d(crm_model, np_imgs, np_xyzs, get_device())
         
         return (_wire_out(mesh),)
     
@@ -3001,7 +3023,7 @@ class InstantMesh_Reconstruction_Model:
     @torch.no_grad()
     def run_LRM(self, lrm_model, multiview_images, orbit_camera_poses, orbit_camera_fovy, texture_resolution):
 
-        images = multiview_images.permute(0, 3, 1, 2).unsqueeze(0).to(DEVICE)   # [N, H, W, 3] -> [1, N, 3, H, W]
+        images = multiview_images.permute(0, 3, 1, 2).unsqueeze(0).to(get_device())   # [N, H, W, 3] -> [1, N, 3, H, W]
         images = v2.functional.resize(images, 320, interpolation=3, antialias=True).clamp(0, 1)
 
         # convert camera format from orbit to lrm inputs
@@ -3010,7 +3032,7 @@ class InstantMesh_Reconstruction_Model:
             azimuths.append(orbit_camera_poses[i][2])
             elevations.append(orbit_camera_poses[i][1])
             radius.append(orbit_camera_poses[i][0])
-        input_cameras = oribt_camera_poses_to_input_cameras(azimuths, elevations, radius=radius, fov=orbit_camera_fovy).to(DEVICE)
+        input_cameras = oribt_camera_poses_to_input_cameras(azimuths, elevations, radius=radius, fov=orbit_camera_fovy).to(get_device())
 
         # get triplane
         planes = lrm_model.forward_planes(images, input_cameras)
@@ -3025,7 +3047,7 @@ class InstantMesh_Reconstruction_Model:
         vertices, faces, uvs, mesh_tex_idx, tex_map = mesh_out
         tex_map = troch_image_dilate(tex_map.permute(1, 2, 0))  # [3, H, W] -> [H, W, 3]
         
-        mesh = Mesh(v=vertices, f=faces, vt=uvs, ft=mesh_tex_idx, albedo=tex_map, device=DEVICE)
+        mesh = Mesh(v=vertices, f=faces, vt=uvs, ft=mesh_tex_idx, albedo=tex_map, device=get_device())
         mesh.auto_normal()
         return (_wire_out(mesh),)
 
@@ -3103,16 +3125,16 @@ class Era3D_MVDiffusion_Model:
         # Get input data
         img_batch = dataset.__getitem__(0)
 
-        imgs_in = torch.cat([img_batch['imgs_in']]*2, dim=0).to(DEVICE, dtype=WEIGHT_DTYPE)    # (B*Nv, 3, H, W) B==1
+        imgs_in = torch.cat([img_batch['imgs_in']]*2, dim=0).to(get_device(), dtype=WEIGHT_DTYPE)    # (B*Nv, 3, H, W) B==1
         #num_views = imgs_in.shape[1]
 
         normal_prompt_embeddings, clr_prompt_embeddings = img_batch['normal_prompt_embeddings'], img_batch['color_prompt_embeddings'] 
-        prompt_embeddings = torch.cat([normal_prompt_embeddings, clr_prompt_embeddings], dim=0).to(DEVICE, dtype=WEIGHT_DTYPE)    # (B*Nv, N, C) B==1
+        prompt_embeddings = torch.cat([normal_prompt_embeddings, clr_prompt_embeddings], dim=0).to(get_device(), dtype=WEIGHT_DTYPE)    # (B*Nv, N, C) B==1
 
         generator = torch.Generator(device=era3d_pipe.unet.device).manual_seed(seed)
 
         # sampling
-        with torch.autocast(DEVICE_STR):
+        with torch.autocast(get_autocast_device_type()):
             unet_out = era3d_pipe(
                 imgs_in, None, prompt_embeds=prompt_embeddings,
                 generator=generator, guidance_scale=guidance_scale, output_type='pt', num_images_per_prompt=1, 
@@ -3186,20 +3208,20 @@ class Instant_NGP:
     ):
         with torch.inference_mode(False):
             
-            ngp = InstantNGP(training_resolution).to(DEVICE)
+            ngp = InstantNGP(training_resolution).to(get_device())
             ngp.prepare_training(reference_image, reference_mask, reference_orbit_camera_poses, reference_orbit_camera_fovy)
             ngp.fit_nerf(training_iterations, background_color)
             
             vertices, triangles = marching_cubes_density_to_mesh(ngp.get_density, marching_cude_grids_resolution, marching_cude_grids_batch_size, marching_cude_threshold)
 
-            v = torch.from_numpy(vertices).contiguous().float().to(DEVICE)
-            f = torch.from_numpy(triangles).contiguous().int().to(DEVICE)
+            v = torch.from_numpy(vertices).contiguous().float().to(get_device())
+            f = torch.from_numpy(triangles).contiguous().int().to(get_device())
 
-            mesh = Mesh(v=v, f=f, device=DEVICE)
+            mesh = Mesh(v=v, f=f, device=get_device())
             mesh.auto_normal()
             mesh.auto_uv()
             
-            mesh.albedo = color_func_to_albedo(mesh, ngp.get_color, texture_resolution, device=DEVICE, force_cuda_rast=force_cuda_rast)
+            mesh.albedo = color_func_to_albedo(mesh, ngp.get_color, texture_resolution, device=get_device(), force_cuda_rast=force_cuda_rast)
             
         return (_wire_out(mesh), )
         
@@ -3279,7 +3301,7 @@ class FlexiCubes_MVS:
                 remove_floaters_weight,
                 cube_stabilizer_weight,
                 force_cuda_rast,
-                device=DEVICE
+                device=get_device()
             )
             
             fc_trainer.prepare_training(reference_depth_maps, reference_masks, reference_orbit_camera_poses, reference_orbit_camera_fovy, reference_normal_maps)
@@ -3357,7 +3379,7 @@ def _apply_unique3d_unet(pipe, config_name):
 
     state_dict = torch.load(checkpoint_path)
     configurable_unet.unet.load_state_dict(state_dict, strict=False)
-    configurable_unet.unet.to(DEVICE, dtype=WEIGHT_DTYPE)
+    configurable_unet.unet.to(get_device(), dtype=WEIGHT_DTYPE)
 
     pipe.unet = configurable_unet.unet
     cstr(f"[Load_Unique3D_Custom_UNet] loaded unet ckpt from {checkpoint_path}").msg.print()
@@ -3462,7 +3484,7 @@ class Fast_Normal_Maps_To_Mesh:
         meshes = fast_geo(pil_normal_list[0], pil_normal_list[2], pil_normal_list[1])
         vertices, faces, _ = from_py3d_mesh(meshes)
 
-        mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        mesh = Mesh(v=vertices, f=faces, device=get_device())
         return (_wire_out(mesh),)
 
 class ExplicitTarget_Mesh_Optimization:
@@ -3514,14 +3536,14 @@ class ExplicitTarget_Mesh_Optimization:
         pil_normal_list = torch_imgs_to_pils(normal_maps, normal_masks)
         normal_stg1 = [img.resize((coarse_reconstruct_resolution, coarse_reconstruct_resolution)) for img in pil_normal_list]
         with torch.inference_mode(False):
-            vertices, faces = mesh.v.detach().clone().to(DEVICE), mesh.f.detach().clone().to(DEVICE).type(torch.int64)
+            vertices, faces = mesh.v.detach().clone().to(get_device()), mesh.f.detach().clone().to(get_device()).type(torch.int64)
             if reconstruction_steps > 0:
                 vertices, faces = reconstruct_stage1(normal_stg1, steps=reconstruction_steps, vertices=vertices, faces=faces, loss_expansion_weight=loss_expansion_weight)
                 
             if refinement_steps > 0:
                 vertices, faces = run_mesh_refine(vertices, faces, pil_normal_list, steps=refinement_steps, update_normal_interval=target_update_interval, update_warmup=target_warmup_update_num, )
 
-            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+            mesh = Mesh(v=vertices, f=faces, device=get_device())
 
         return (_wire_out(mesh),)
 
@@ -3584,10 +3606,10 @@ class ExplicitTarget_Color_Projection:
                 azimuths.append(angle)
                 angle += interval
                 
-            cam_list = get_cameras_list(azimuths, DEVICE, focal=1)
+            cam_list = get_cameras_list(azimuths, get_device(), focal=1)
         else:
             #reference_orbit_camera_poses[0] = [360 + angle if angle < 0 else angle for angle in reference_orbit_camera_poses[0]]
-            cam_list = get_orbit_cameras_list(reference_orbit_camera_poses, DEVICE, render_orbit_camera_fovy)
+            cam_list = get_orbit_cameras_list(reference_orbit_camera_poses, get_device(), render_orbit_camera_fovy)
         
         weights = projection_weights.split(",")
         if len(weights) == len(cam_list):
@@ -3596,7 +3618,7 @@ class ExplicitTarget_Color_Projection:
             weights = None
         
         if texture_projecton:
-            target_img = multiview_color_projection_texture(meshes, mesh, pil_image_list, weights=weights, resolution=projection_resolution, device=DEVICE, complete_unseen=complete_unseen_rgb, confidence_threshold=confidence_threshold, cameras_list=cam_list)
+            target_img = multiview_color_projection_texture(meshes, mesh, pil_image_list, weights=weights, resolution=projection_resolution, device=get_device(), complete_unseen=complete_unseen_rgb, confidence_threshold=confidence_threshold, cameras_list=cam_list)
             target_img = troch_image_dilate(target_img)
             
             if texture_type == "Albedo":
@@ -3606,13 +3628,13 @@ class ExplicitTarget_Color_Projection:
             else:
                 cstr(f"[{self.__class__.__name__}] Unknow texture type: {texture_type}").error.print()
         else:
-            new_meshes = multiview_color_projection(meshes, pil_image_list, weights=weights, resolution=projection_resolution, device=DEVICE, complete_unseen=complete_unseen_rgb, confidence_threshold=confidence_threshold, cameras_list=cam_list)
+            new_meshes = multiview_color_projection(meshes, pil_image_list, weights=weights, resolution=projection_resolution, device=get_device(), complete_unseen=complete_unseen_rgb, confidence_threshold=confidence_threshold, cameras_list=cam_list)
             vertices, faces, vertex_colors = from_py3d_mesh(new_meshes)
 
             mesh = Mesh(v=vertices, f=faces, 
                         vn=None if mesh.vn is None else mesh.vn.clone(), fn=None if mesh.fn is None else mesh.fn.clone(), 
                         vt=None if mesh.vt is None else mesh.vt.clone(), ft=None if mesh.ft is None else mesh.ft.clone(), 
-                        vc=vertex_colors, device=DEVICE)
+                        vc=vertex_colors, device=get_device())
             if mesh.vn is None:
                 mesh.auto_normal()
                 
@@ -3892,7 +3914,7 @@ class CharacterGen_Reconstruction_Model:
         
         vertices, faces = character_lrm_pipe.inference(pil_mv_image_list)
 
-        mesh = Mesh(v=vertices, f=faces.to(torch.int64), device=DEVICE)
+        mesh = Mesh(v=vertices, f=faces.to(torch.int64), device=get_device())
         mesh.auto_normal()
         mesh.auto_uv()
         
@@ -4014,9 +4036,9 @@ class Craftsman_Shape_Diffusion_Model:
             bounds=[-box_v, -box_v, -box_v, box_v, box_v, box_v],
             grids_resolution=marching_cude_grids_resolution
         )
-        vertices, faces = torch.from_numpy(mesh_outputs[0][0]).to(DEVICE), torch.from_numpy(mesh_outputs[0][1]).to(torch.int64).to(DEVICE)
+        vertices, faces = torch.from_numpy(mesh_outputs[0][0]).to(get_device()), torch.from_numpy(mesh_outputs[0][1]).to(torch.int64).to(get_device())
 
-        mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        mesh = Mesh(v=vertices, f=faces, device=get_device())
         mesh.auto_normal()
         mesh.auto_uv()
         
@@ -4141,7 +4163,7 @@ class Load_CRM_T2I_V2_Models:
         
         from .Gen_3D_Modules.CRM_T2I_V2.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
         
-        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_ckpt_dir()).to(DEVICE, dtype=WEIGHT_DTYPE)
+        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_ckpt_dir()).to(get_device(), dtype=WEIGHT_DTYPE)
 
         crm_config_path = os.path.join(self.config_dir(), crm_config_path)
         
@@ -4151,14 +4173,14 @@ class Load_CRM_T2I_V2_Models:
 
         crm_mvdiffusion_model = instantiate_from_config(crm_config.model)
         crm_mvdiffusion_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
-        crm_mvdiffusion_model.device = DEVICE
+        crm_mvdiffusion_model.device = get_device()
         
-        crm_mvdiffusion_model.clip_model = crm_mvdiffusion_model.clip_model.to(DEVICE, dtype=WEIGHT_DTYPE)
-        crm_mvdiffusion_model.vae_model = crm_mvdiffusion_model.vae_model.to(DEVICE, dtype=WEIGHT_DTYPE)
-        crm_mvdiffusion_model = crm_mvdiffusion_model.to(DEVICE, dtype=WEIGHT_DTYPE)
+        crm_mvdiffusion_model.clip_model = crm_mvdiffusion_model.clip_model.to(get_device(), dtype=WEIGHT_DTYPE)
+        crm_mvdiffusion_model.vae_model = crm_mvdiffusion_model.vae_model.to(get_device(), dtype=WEIGHT_DTYPE)
+        crm_mvdiffusion_model = crm_mvdiffusion_model.to(get_device(), dtype=WEIGHT_DTYPE)
         
         crm_mvdiffusion_sampler_v2 = get_obj_from_str(crm_config.sampler.target)(
-            crm_mvdiffusion_model, device=DEVICE, dtype=WEIGHT_DTYPE, **crm_config.sampler.params
+            crm_mvdiffusion_model, device=get_device(), dtype=WEIGHT_DTYPE, **crm_config.sampler.params
         )
         
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
@@ -4219,7 +4241,7 @@ class CRM_T2I_V2_Models:
         batch_reference_images = [CRMSamplerV2.process_pixel_img(img) for img in torch_imgs_to_pils(reference_image, reference_mask)]
         
         # Adapter conditioning.
-        normal_maps = normal_maps.permute(0, 3, 1, 2).to(DEVICE, dtype=WEIGHT_DTYPE)    # [N, H, W, 3] -> [N, 3, H, W]
+        normal_maps = normal_maps.permute(0, 3, 1, 2).to(get_device(), dtype=WEIGHT_DTYPE)    # [N, H, W, 3] -> [N, 3, H, W]
         down_intrablock_additional_residuals = t2iadapter_v2(normal_maps)
         down_intrablock_additional_residuals = [
             sample.to(dtype=WEIGHT_DTYPE).chunk(reference_image.shape[0]) for sample in down_intrablock_additional_residuals
@@ -4352,7 +4374,7 @@ class Load_CRM_T2I_V3_Models:
         
         from .Gen_3D_Modules.CRM_T2I_V3.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
         
-        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_ckpt_dir()).to(DEVICE, dtype=WEIGHT_DTYPE)
+        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_ckpt_dir()).to(get_device(), dtype=WEIGHT_DTYPE)
 
         crm_config_path = os.path.join(self.config_dir(), crm_config_path)
         
@@ -4362,14 +4384,14 @@ class Load_CRM_T2I_V3_Models:
 
         crm_mvdiffusion_model = instantiate_from_config(crm_config.model)
         crm_mvdiffusion_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
-        crm_mvdiffusion_model.device = DEVICE
+        crm_mvdiffusion_model.device = get_device()
         
-        crm_mvdiffusion_model.clip_model = crm_mvdiffusion_model.clip_model.to(DEVICE, dtype=WEIGHT_DTYPE)
-        crm_mvdiffusion_model.vae_model = crm_mvdiffusion_model.vae_model.to(DEVICE, dtype=WEIGHT_DTYPE)
-        crm_mvdiffusion_model = crm_mvdiffusion_model.to(DEVICE, dtype=WEIGHT_DTYPE)
+        crm_mvdiffusion_model.clip_model = crm_mvdiffusion_model.clip_model.to(get_device(), dtype=WEIGHT_DTYPE)
+        crm_mvdiffusion_model.vae_model = crm_mvdiffusion_model.vae_model.to(get_device(), dtype=WEIGHT_DTYPE)
+        crm_mvdiffusion_model = crm_mvdiffusion_model.to(get_device(), dtype=WEIGHT_DTYPE)
         
         crm_mvdiffusion_sampler_v3 = get_obj_from_str(crm_config.sampler.target)(
-            crm_mvdiffusion_model, device=DEVICE, dtype=WEIGHT_DTYPE, **crm_config.sampler.params
+            crm_mvdiffusion_model, device=get_device(), dtype=WEIGHT_DTYPE, **crm_config.sampler.params
         )
         
         unet = crm_mvdiffusion_model.model
@@ -4458,7 +4480,7 @@ class CRM_T2I_V3_Models:
         batch_reference_images = [CRMSamplerV3.process_pixel_img(img) for img in torch_imgs_to_pils(reference_image, reference_mask)]
         
         # Adapter conditioning.
-        normal_maps = normal_maps.permute(0, 3, 1, 2).to(DEVICE, dtype=WEIGHT_DTYPE)    # [N, H, W, 3] -> [N, 3, H, W]
+        normal_maps = normal_maps.permute(0, 3, 1, 2).to(get_device(), dtype=WEIGHT_DTYPE)    # [N, H, W, 3] -> [N, 3, H, W]
         down_intrablock_additional_residuals = t2iadapter_v2(normal_maps)
         down_intrablock_additional_residuals = [
             sample.to(dtype=WEIGHT_DTYPE).chunk(reference_image.shape[0]) for sample in down_intrablock_additional_residuals
@@ -4651,7 +4673,7 @@ def _build_hunyuan3d_v1_recon(config):
     _subfolder, _name, use_lite = cls._VARIANTS[variant]
     base = cls._ensure_weights(variant)
     ckpt = os.path.join(base, cls._SVRM)
-    model = Views2Mesh(cls.svrm_config(), ckpt, DEVICE, use_lite=use_lite)
+    model = Views2Mesh(cls.svrm_config(), ckpt, get_device(), use_lite=use_lite)
     cstr(f"[Load_Hunyuan3D_V1] loaded {variant} reconstruction ckpt from {ckpt}").msg.print()
     return model
 
@@ -4695,8 +4717,8 @@ class Hunyuan3D_V1_Reconstruction_Model:
             seed=seed,
             target_face_count=target_face_count
         )
-        vertices, faces, vtx_colors = torch.from_numpy(vertices).to(DEVICE), torch.from_numpy(faces).to(torch.int64).to(DEVICE), torch.from_numpy(vtx_colors).to(DEVICE)
-        mesh = Mesh(v=vertices, f=faces.to(torch.int64), vc=vtx_colors, device=DEVICE)
+        vertices, faces, vtx_colors = torch.from_numpy(vertices).to(get_device()), torch.from_numpy(faces).to(torch.int64).to(get_device()), torch.from_numpy(vtx_colors).to(get_device())
+        mesh = Mesh(v=vertices, f=faces.to(torch.int64), vc=vtx_colors, device=get_device())
         mesh.auto_normal()
         
         return (_wire_out(mesh),)
@@ -4829,7 +4851,7 @@ class Load_Trellis_Structured_3D_Latents_Models:
     def load_pipe(self, repo_id):
         
         pipe = TrellisImageTo3DPipeline.from_pretrained(repo_id)
-        pipe.to(DEVICE)
+        pipe.to(get_device())
         
         return (pipe,)
     
@@ -4898,8 +4920,8 @@ class Trellis_Structured_3D_Latents_Models:
             texture_size=1024,      # Size of the texture used for the GLB
         )
 
-        vertices, faces, uvs, texture = torch.from_numpy(vertices).to(DEVICE), torch.from_numpy(faces).to(torch.int64).to(DEVICE), torch.from_numpy(uvs).to(DEVICE), torch.from_numpy(texture).to(DEVICE)
-        mesh = Mesh(v=vertices, f=faces, vt=uvs, ft=faces, albedo=texture, device=DEVICE)
+        vertices, faces, uvs, texture = torch.from_numpy(vertices).to(get_device()), torch.from_numpy(faces).to(torch.int64).to(get_device()), torch.from_numpy(uvs).to(get_device()), torch.from_numpy(texture).to(get_device())
+        mesh = Mesh(v=vertices, f=faces, vt=uvs, ft=faces, albedo=texture, device=get_device())
         mesh.auto_normal()
 
         return (_wire_out(mesh),)
@@ -4952,7 +4974,7 @@ class TripoSG_I23D_Model:
         with torch.inference_mode(False):
             outputs = tsg_pipe(
                 image=single_image,
-                generator=torch.Generator(device=DEVICE).manual_seed(seed),
+                generator=torch.Generator(device=get_device()).manual_seed(seed),
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
                 use_flash_decoder=use_flash_decoder,
@@ -4961,8 +4983,8 @@ class TripoSG_I23D_Model:
                 dense_octree_depth=dense_octree_depth,
             ).samples[0]
 
-            vertices, faces = torch.from_numpy(outputs[0].astype(np.float32)).to(DEVICE), torch.from_numpy(np.ascontiguousarray(outputs[1])).to(torch.int64).to(DEVICE) 
-            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+            vertices, faces = torch.from_numpy(outputs[0].astype(np.float32)).to(get_device()), torch.from_numpy(np.ascontiguousarray(outputs[1])).to(torch.int64).to(get_device()) 
+            mesh = Mesh(v=vertices, f=faces, device=get_device())
             mesh.auto_normal()
 
         return (_wire_out(mesh),)
@@ -5022,7 +5044,7 @@ class TripoSG_Scribble_Model:
         outputs = tsg_scribble_pipe(
             image=single_image,
             prompt=prompt,
-            generator=torch.Generator(device=DEVICE).manual_seed(seed),
+            generator=torch.Generator(device=get_device()).manual_seed(seed),
             num_inference_steps=num_inference_steps,
             guidance_scale=0, # this is a CFG-distilled model
             attention_kwargs={"cross_attention_scale": prompt_confidence, "cross_attention_2_scale": scribble_confidence},
@@ -5032,8 +5054,8 @@ class TripoSG_Scribble_Model:
             dense_octree_depth=dense_octree_depth,
         ).samples[0]
 
-        vertices, faces = torch.from_numpy(outputs[0].astype(np.float32)).to(DEVICE), torch.from_numpy(np.ascontiguousarray(outputs[1])).to(torch.int64).to(DEVICE)
-        mesh = Mesh(v=vertices, f=faces.to(torch.int64), device=DEVICE)
+        vertices, faces = torch.from_numpy(outputs[0].astype(np.float32)).to(get_device()), torch.from_numpy(np.ascontiguousarray(outputs[1])).to(torch.int64).to(get_device())
+        mesh = Mesh(v=vertices, f=faces.to(torch.int64), device=get_device())
         mesh.auto_normal()
 
         return (_wire_out(mesh),)
@@ -5105,7 +5127,7 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         pipe = Hunyuan3DDiTFlowMatchingPipeline.from_single_file(
             ckpt_path=ckpt,
             config_path=cfg,
-            device=DEVICE,
+            device=get_device(),
             dtype=WEIGHT_DTYPE,
             use_safetensors=True,
             from_pretrained_kwargs={
@@ -5118,7 +5140,13 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         if flash_vdm and any(tag in subfolder for tag in ("turbo", "fast")):
             pipe.enable_flashvdm(replace_vae=False)
 
-        return pipe.to(DEVICE, WEIGHT_DTYPE)
+        # Cast dtype, do NOT place on device: comfy/sd.py does the same
+        # (`first_stage_model.to(self.vae_dtype)`, then the module goes to a
+        # ModelPatcher). model_cache.managed() wraps this so load_models_gpu()
+        # chooses placement -- that is what makes eviction and partial loading
+        # possible. Moving here spends the VRAM before ComfyUI is asked if
+        # there is room, which is where every OOM in the 20:05 log was raised.
+        return pipe.to(WEIGHT_DTYPE)
 
     def load(self, generation_mode, flash_vdm):
         repo, subfolder, _def_steps = self._MODES[generation_mode]
@@ -5203,7 +5231,13 @@ def _build_hunyuan3d_v2_texgen(config):
         model_path=local_repo_dir,
         subfolder=config["subfolder"],
     )
-    return pipe.to(DEVICE, WEIGHT_DTYPE)
+    # Cast dtype, do NOT place on device: comfy/sd.py does the same
+    # (`first_stage_model.to(self.vae_dtype)`, then the module goes to a
+    # ModelPatcher). model_cache.managed() wraps this so load_models_gpu()
+    # chooses placement -- that is what makes eviction and partial loading
+    # possible. Moving here spends the VRAM before ComfyUI is asked if
+    # there is room, which is where every OOM in the 20:05 log was raised.
+    return pipe.to(WEIGHT_DTYPE)
 
 
 def resolve_hunyuan3d_v2_texgen(config):
@@ -5821,9 +5855,9 @@ class StableGen_StableX_Process_Image:
         if image.dim() == 4:
             image = image.squeeze(0)
         
-        image_tensor = image.permute(2, 0, 1).unsqueeze(0).to(DEVICE).to(torch.float16)
+        image_tensor = image.permute(2, 0, 1).unsqueeze(0).to(get_device()).to(torch.float16)
 
-        generator = torch.Generator(device=DEVICE).manual_seed(seed)
+        generator = torch.Generator(device=get_device()).manual_seed(seed)
 
         try:
             pipe_out = stablex_pipe(
@@ -5894,7 +5928,7 @@ def _mvadapter_kwargs(config, cls):
         "adapter_path": config["adapter_path"],
         "scheduler": config["scheduler"],
         "num_views": config["num_views"],
-        "device": DEVICE_STR,
+        "device": get_device_str(),
         "dtype": torch.float16 if config["use_fp16"] else torch.float32,
         "use_mmgp": config["use_mmgp"],
         "adapter_local_path": cls.CKPT_MVADAPTER_PATH,
@@ -5967,10 +6001,10 @@ class MVAdapter_IG2MV:
             reference_conditioning_scale=reference_conditioning_scale,
             negative_prompt=negative_prompt,
             lora_scale=lora_scale,
-            device=DEVICE_STR,
+            device=get_device_str(),
         )
         
-        return_images = pils_to_torch_imgs(images, device=DEVICE_STR)
+        return_images = pils_to_torch_imgs(images, device=get_device_str())
         return (return_images,)
 
 class Load_MVAdapter_TG2MV_Pipeline:
@@ -6074,11 +6108,11 @@ class MVAdapter_TG2MV:
             seed=seed,
             negative_prompt=negative_prompt,
             lora_scale=lora_scale,
-            device=DEVICE_STR,
+            device=get_device_str(),
         )
         
         
-        return_images = pils_to_torch_imgs(images, device=DEVICE_STR)
+        return_images = pils_to_torch_imgs(images, device=get_device_str())
         return (return_images,)
             
 class Load_MVAdapter_Texture_Pipeline:
@@ -6113,7 +6147,7 @@ class Load_MVAdapter_Texture_Pipeline:
         texture_pipe = mvadapter_prepare_texture_pipeline(
             upscaler_ckpt_path=upscaler_ckpt_path,
             inpaint_ckpt_path=inpaint_ckpt_path,
-            device=DEVICE_STR,
+            device=get_device_str(),
             use_mmgp=use_mmgp,
         )
         
@@ -6303,7 +6337,7 @@ def _build_hunyuan3d_21_shapegen(config):
         base_dir,
         subfolder=subfolder,
         use_safetensors=True,
-        device=DEVICE,
+        device=get_device(),
     )
 
 class Load_Hunyuan3D_21_TexGen_Pipeline:
@@ -6635,7 +6669,13 @@ def _build_partcrafter(config):
     """Materialize a partcrafter recipe. Called only on a cache miss."""
     base_dir = Load_PartCrafter_Pipeline._ensure_weights()
     _alias_model_index_libraries(base_dir)
-    pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
+    # Cast dtype, do NOT place on device: comfy/sd.py does the same
+    # (`first_stage_model.to(self.vae_dtype)`, then the module goes to a
+    # ModelPatcher). model_cache.managed() wraps this so load_models_gpu()
+    # chooses placement -- that is what makes eviction and partial loading
+    # possible. Moving here spends the VRAM before ComfyUI is asked if
+    # there is room, which is where every OOM in the 20:05 log was raised.
+    pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(WEIGHT_DTYPE)
     print("PartCrafter pipeline loaded")
     return pipeline
 
@@ -6686,7 +6726,13 @@ def _build_partcrafter_scene(config):
     """Materialize a partcrafter_scene recipe. Only on a cache miss."""
     base_dir = Load_PartCrafter_Scene_Pipeline._ensure_weights()
     _alias_model_index_libraries(base_dir)
-    pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
+    # Cast dtype, do NOT place on device: comfy/sd.py does the same
+    # (`first_stage_model.to(self.vae_dtype)`, then the module goes to a
+    # ModelPatcher). model_cache.managed() wraps this so load_models_gpu()
+    # chooses placement -- that is what makes eviction and partial loading
+    # possible. Moving here spends the VRAM before ComfyUI is asked if
+    # there is room, which is where every OOM in the 20:05 log was raised.
+    pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(WEIGHT_DTYPE)
     print("PartCrafter-Scene pipeline loaded")
     return pipeline
 
@@ -6754,7 +6800,6 @@ class PartCrafter_Generate:
             guidance_scale=guidance_scale,
             max_num_expanded_coords=max_num_expanded_coords,
             use_flash_decoder=use_flash_decoder,
-            callback_on_step_end=_diffusers_step_progress(num_inference_steps),
         ).meshes
         
         # Ensure no None outputs 
