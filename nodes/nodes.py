@@ -134,31 +134,52 @@ from .shared_utils.log_utils import cstr
 from . import _vendor_paths
 
 
-def _ensure_upscale_model(url, filename):
-    """Fetch an upscaler into ComfyUI's own upscale_models/ and return its name.
-
-    Deliberately NOT models/3d-pack/: the point is for the native
-    UpscaleModelLoader to resolve it, and that node looks the name up with
-    folder_paths.get_full_path("upscale_models", name). Returning the bare
-    filename -- not a path -- is what lets it feed that node's `model_name`.
-
-    Wiring this output into UpscaleModelLoader also orders the graph: without
-    a link, ComfyUI is free to run the loader before this node has downloaded
-    anything, and the loader fails on a file that is about to exist.
-    """
+def _comfy_model_dir(folder):
+    """ComfyUI's own directory for `folder` (checkpoints, clip_vision, ...)."""
     try:
-        upscale_dir = comfy_paths.get_folder_paths("upscale_models")[0]
+        path = comfy_paths.get_folder_paths(folder)[0]
     except Exception:
-        upscale_dir = os.path.join(comfy_paths.models_dir, "upscale_models")
-    os.makedirs(upscale_dir, exist_ok=True)
+        path = os.path.join(comfy_paths.models_dir, folder)
+    os.makedirs(path, exist_ok=True)
+    return path
 
-    dest = os.path.join(upscale_dir, filename)
+
+def _ensure_comfy_model(folder, filename, *, url=None, repo_id=None, repo_file=None):
+    """Fetch a model into ComfyUI's OWN model folder and return its bare name.
+
+    Deliberately not models/3d-pack/: the point is for a NATIVE loader
+    (CheckpointLoaderSimple, CLIPVisionLoader, UpscaleModelLoader) to resolve
+    it, and those look the name up with folder_paths.get_full_path(folder,
+    name). Returning the bare filename -- not a path -- is what lets the value
+    feed such a loader's combo widget.
+
+    Wiring that output into the loader also ORDERS the graph: with no link,
+    ComfyUI is free to run the loader before this node has downloaded anything,
+    and the loader fails on a file that is about to exist.
+
+    Already-present files are never re-fetched, so this is safe to call on
+    every execution.
+    """
+    target_dir = _comfy_model_dir(folder)
+    dest = os.path.join(target_dir, filename)
     if os.path.isfile(dest):
         return filename
 
-    cstr(f"[Comfy3D] fetching upscaler {filename} -> {upscale_dir}").msg.print()
-    download_url(url, filename, upscale_dir)
+    cstr(f"[Comfy3D] fetching {folder}/{filename} ...").msg.print()
+    if url is not None:
+        download_url(url, filename, target_dir)
+    else:
+        src = download_file(repo_id, repo_file or filename, target_dir)
+        # download_file preserves the repo's own subfolder layout; the native
+        # loaders only look in the folder root, so put it where they look.
+        if os.path.abspath(src) != os.path.abspath(dest):
+            os.replace(src, dest)
     return filename
+
+
+def _ensure_upscale_model(url, filename):
+    """Back-compat wrapper: an upscaler into ComfyUI's upscale_models/."""
+    return _ensure_comfy_model("upscale_models", filename, url=url)
 
 
 def _alias_model_index_libraries(base_dir):
@@ -3758,12 +3779,44 @@ class Load_CharacterGen_MVDiffusion_Model:
     FUNCTION = "load_model"
     CATEGORY = "Comfy3D/Import|Export"
     
+    # CharacterGen builds its 2D stage on top of a full SD 2.1 pipeline -- it
+    # pulls tokenizer, text_encoder, vae, unet (twice) and scheduler from
+    # `pretrained_model_path` (character_inference.py:106-138).
+    #
+    # The config shipped by upstream names stabilityai/stable-diffusion-2-1,
+    # which Stability has since GATED: an anonymous request now gets 401
+    # RepositoryNotFound, and so do -base and -unclip. That is not a transient
+    # failure and no retry fixes it, so the node downloaded 14 GB of CharacterGen
+    # and then died fetching a tokenizer.
+    #
+    # nlightcho/stable-diffusion-2-1 is an ungated mirror of the same pipeline,
+    # verified against the SD 2.1 fingerprint: unet cross_attention_dim 1024,
+    # use_linear_projection true, sample_size 96, block_out_channels
+    # [320, 640, 1280, 1280]; text encoder CLIPTextModel 1024x23. It is also
+    # safetensors-only, so nothing here pulls a pickle.
+    SD21_REPO_ID = "nlightcho/stable-diffusion-2-1"
+
+    @classmethod
+    def sd21_dir(cls):
+        """Local SD 2.1 base, downloaded on first use."""
+        return os.path.join(CKPT_DIFFUSERS_PATH, cls.SD21_REPO_ID)
+
     def load_model(self):
         # Download checkpoints
         download_repo(self.default_repo_id, self.ckpt_dir(), ignore_patterns=HF_DOWNLOAD_IGNORE)
+
+        # ...and the SD 2.1 base it is built on, to a LOCAL path. Passing a repo
+        # id would send diffusers back to the hub on every load; passing a
+        # directory keeps this node working offline and off a gated repo.
+        download_repo(self.SD21_REPO_ID, self.sd21_dir(), self.SD21_REPO_ID,
+                      ignore_patterns=["*.bin", "*.ckpt", "*.png", "*.md"])
+
+        config = OmegaConf.load(self.config_dir())
+        config.pretrained_model_path = self.sd21_dir()
+
         # Load pre-trained models
-        character_mv_gen_pipe = Inference2D_API(checkpoint_root_path=self.ckpt_dir(), **OmegaConf.load(self.config_dir()))
-        
+        character_mv_gen_pipe = Inference2D_API(checkpoint_root_path=self.ckpt_dir(), **config)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.ckpt_dir()}").msg.print()
         return (character_mv_gen_pipe,)
     

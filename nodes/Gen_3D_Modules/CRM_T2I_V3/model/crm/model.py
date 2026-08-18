@@ -72,7 +72,20 @@ class ConvolutionalReconstructionModel(nn.Module):
 
         self.denoising = True
         from diffusers import DDIMScheduler
-        self.scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1-base", subfolder="scheduler")
+        # Local config, not the hub. stabilityai/stable-diffusion-2-1-base is
+        # GATED -- an anonymous from_pretrained returns 401 RepositoryNotFound,
+        # so this line failed at runtime for every CRM family. Only the
+        # scheduler's parameters were ever needed, and they are pinned under
+        # model_configs/ (see the README there; note prediction_type "epsilon",
+        # which differs from the 768px model's "v_prediction").
+        import os
+        _scheduler_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "..", "..",
+            "model_configs", "Diffusers", "stabilityai",
+            "stable-diffusion-2-1-base", "scheduler",
+        )
+        self.scheduler = DDIMScheduler.from_pretrained(os.path.normpath(_scheduler_dir))
 
     def decode(self, data, triplane_feature2):
         if self.geo_type == "flex":
