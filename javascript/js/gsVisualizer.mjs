@@ -1,6 +1,6 @@
 import * as SPLAT from 'gsplat';
 //import { api } from '/scripts/api.js'
-import {getRGBValue} from './sharedFunctions.js';
+import {getRGBValue} from './sharedFunctions.mjs';
 
 const visualizer = document.getElementById("visualizer");
 const canvas = document.getElementById("canvas");

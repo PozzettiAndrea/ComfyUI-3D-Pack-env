@@ -21,17 +21,21 @@
 
   <div id="container">
     <canvas id="canvas"></canvas>
+		<!-- Vendored, and patched: upstream gsplat fetches with
+		     credentials:"omit", which drops the session cookie behind an
+		     authenticating proxy and makes every splat load fail. See the header
+		     of gsplat-bundle.mjs. -->
 		<script type="importmap">
 			{
 			  "imports": {
-				"gsplat": "https://cdn.jsdelivr.net/npm/gsplat@latest/dist/index.js"
+				"gsplat": "../js/gsplat-bundle.mjs"
 			  }
 			}
 		</script>
-    <script id="visualizer" type="module" filepath="" timestamp="" crossorigin src="../js/gsVisualizer.js"></script>
+    <script id="visualizer" type="module" filepath="" timestamp="" crossorigin src="../js/gsVisualizer.mjs"></script>
   </div>
 
-  <script src="../js/coloris.js"></script>
+  <script src="../js/coloris.mjs"></script>
   <script>
     Coloris({
       el: '.coloris',

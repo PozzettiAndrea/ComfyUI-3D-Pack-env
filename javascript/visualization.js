@@ -39,62 +39,40 @@ class Visualizer {
 function createVisualizer(node, inputName, typeName, inputData, app) {
     node.name = inputName
 
-    const widget = {
-        type: typeName,
-        name: "preview3d",
-        callback: () => {},
-        draw : function(ctx, node, widgetWidth, widgetY, widgetHeight) {
-            const margin = 30
-            const top_offset = LiteGraph.NODE_TITLE_HEIGHT+margin
-            const visible = app.canvas.ds.scale > 0.5 && this.type === typeName
-
-            const [x, y] = node.getBounding();
-            const [left, top] = app.canvasPosToClientPos([x, y]);
-            const width = node.width * app.canvas.ds.scale;
-            const height = (node.height - top_offset ) * app.canvas.ds.scale;
-
-            Object.assign(this.visualizer.style, {
-                left: `${left}px`,
-                top: `${top+(top_offset * app.canvas.ds.scale)}px`,
-                width: `${width}px`,
-                height: `${height}px`,
-                position: "absolute",
-                overflow: "hidden",
-            })
-
-            Object.assign(this.visualizer.children[0].style, {
-                transformOrigin: "50% 50%",
-                width: '100%',
-                height: '100%',
-                border: '0 none',
-            })
-
-            this.visualizer.hidden = !visible
-        },
-    }
-
+    // A DOM widget, not a canvas widget positioned by hand.
+    //
+    // This used to build an absolutely-positioned div, append it to
+    // document.body, and re-compute left/top/width/height from canvas
+    // coordinates on every draw. That injects into the shared page -- the
+    // element outlives the node, sits in another pack's DOM, and has to
+    // re-derive a transform ComfyUI already knows. addDOMWidget is the
+    // sanctioned equivalent: ComfyUI owns placement, visibility, zoom and
+    // teardown, and the element stays inside the node. Same approach as
+    // ComfyUI-GeometryPack (js/mesh_preview_three.js:47).
     const container = document.createElement('div')
     container.id = `Comfy3D_${inputName}`
+    Object.assign(container.style, {
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+    })
 
     node.visualizer = new Visualizer(node, container, typeName)
+
+    const widget = node.addDOMWidget(inputName, typeName, container, {
+        getValue() { return "" },
+        setValue(_v) {},
+    })
     widget.visualizer = container
     widget.parent = node
 
-    document.body.appendChild(widget.visualizer)
-
-    node.addCustomWidget(widget)
+    // Keep the preview roughly square, as the old draw() did via onResize.
+    widget.computeSize = function (width) {
+        return [width, Math.max(width - 100, 400)]
+    }
 
     node.updateParameters = (params) => {
         node.visualizer.updateVisual(params.filepath)
-    }
-
-    // Events for drawing backgound
-    node.onDrawBackground = function (ctx) {
-        if (!this.flags.collapsed) {
-            node.visualizer.iframe.hidden = false
-        } else {
-            node.visualizer.iframe.hidden = true
-        }
     }
 
     // Make sure visualization iframe is always inside the node when resize the node
@@ -159,7 +137,11 @@ function registerVisualizer(nodeType, nodeData, nodeClassName, typeName){
 }
 
 app.registerExtension({
-    name: "Mr.ForExample.Visualizer.GS",
+    // Namespaced under the pack's ComfyUI DisplayName. Extension names are
+    // global: two packs registering the same name means one is silently
+    // dropped, and "Mr.ForExample.Visualizer.GS" is inherited from upstream,
+    // so the unmodified 3D-Pack and this fork would collide in one install.
+    name: "3dpackenved.Visualizer",
 
     async init (app) {
 

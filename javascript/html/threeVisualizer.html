@@ -19,18 +19,27 @@
 		</div>
 
 		<div id="container">
+			<!-- Vendored under ../lib/, not a CDN: the viewer must work offline and
+			     must not fetch third-party code into a page showing local output.
+			     "three@latest" also meant any upstream release could break this
+			     viewer without a commit here. Pinned copy is three 0.185.1. -->
 			<script type="importmap">
 				{
 				  "imports": {
-					"three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
-					"three/addons/": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/"
+					"three": "../lib/three/three.module.mjs",
+					"three/addons/loaders/GLTFLoader.js": "../lib/three/addons/loaders/GLTFLoader.mjs",
+					"three/addons/loaders/OBJLoader.js": "../lib/three/addons/loaders/OBJLoader.mjs",
+					"three/addons/loaders/MTLLoader.js": "../lib/three/addons/loaders/MTLLoader.mjs",
+					"three/addons/loaders/DRACOLoader.js": "../lib/three/addons/loaders/DRACOLoader.mjs",
+					"three/addons/controls/OrbitControls.js": "../lib/three/addons/controls/OrbitControls.mjs",
+					"three/addons/environments/RoomEnvironment.js": "../lib/three/addons/environments/RoomEnvironment.mjs"
 				  }
 				}
 			</script>
-			<script id="visualizer" type="module" filepath="" timestamp="" crossorigin src="../js/threeVisualizer.js"></script>
+			<script id="visualizer" type="module" filepath="" timestamp="" crossorigin src="../js/threeVisualizer.mjs"></script>
 		</div>
 
-		<script src="../js/coloris.js"></script>
+		<script src="../js/coloris.mjs"></script>
 		<script>
 			Coloris({
 				el: '.coloris',

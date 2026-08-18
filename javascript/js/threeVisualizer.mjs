@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 //import { api } from '/scripts/ui/api.ts';
-import {getRGBValue} from './sharedFunctions.js';
+import {getRGBValue} from './sharedFunctions.mjs';
 
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -154,7 +154,11 @@ async function main(filepath="") {
 
         } else if (fileExt == "glb") {
             const dracoLoader = new DRACOLoader();
-            dracoLoader.setDecoderPath( 'https://unpkg.com/three@latest/examples/jsm/libs/draco/gltf/' );
+            // No setDecoderPath: DRACOLoader defaults to '../libs/draco/gltf/'
+            // resolved against its OWN module URL (DRACOLoader.js:22-23), which
+            // now points at the vendored copy under lib/three/addons/libs/.
+            // The old value pinned an unpkg URL at three@latest, so a Draco mesh
+            // needed the network and could break on any upstream release.
             const loader = new GLTFLoader();
             loader.setDRACOLoader( dracoLoader );
 
