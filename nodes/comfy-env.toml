@@ -33,6 +33,11 @@ comfy-aimdo = "*"
 # same way alongside the same spconv/cumm wheels.
 pccm = "*"
 
+# scikit-learn: imported as `sklearn` by vendored clustering/segmentation
+# code. Nothing else pulls it in, so the failure is a ModuleNotFoundError
+# mid-workflow rather than at install time.
+scikit-learn = "*"
+
 # xformers deliberately absent. It caps flash-attn at <=2.8.2
 # (xformers/ops/fmha/flash.py) and raises ImportError above that, while the
 # cuda-wheels farm builds flash_attn 2.8.3. diffusers imports xformers, and 94
