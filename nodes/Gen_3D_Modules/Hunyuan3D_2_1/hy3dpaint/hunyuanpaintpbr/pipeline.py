@@ -626,6 +626,11 @@ class HunyuanPaintPipeline(StableDiffusionPipeline):
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
+        # self.progress_bar is tqdm on the worker's stdout, which the ComfyUI
+        # UI never sees. Mirror it into ComfyUI's bar, as the other ten
+        # vendored pipelines in this pack already do.
+        import comfy.utils
+        comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -709,6 +714,7 @@ class HunyuanPaintPipeline(StableDiffusionPipeline):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+                    comfy_pbar.update(1)
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)

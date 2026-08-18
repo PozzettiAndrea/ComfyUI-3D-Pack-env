@@ -134,6 +134,56 @@ from .shared_utils.log_utils import cstr
 from . import _vendor_paths
 
 
+def _ensure_upscale_model(url, filename):
+    """Fetch an upscaler into ComfyUI's own upscale_models/ and return its name.
+
+    Deliberately NOT models/3d-pack/: the point is for the native
+    UpscaleModelLoader to resolve it, and that node looks the name up with
+    folder_paths.get_full_path("upscale_models", name). Returning the bare
+    filename -- not a path -- is what lets it feed that node's `model_name`.
+
+    Wiring this output into UpscaleModelLoader also orders the graph: without
+    a link, ComfyUI is free to run the loader before this node has downloaded
+    anything, and the loader fails on a file that is about to exist.
+    """
+    try:
+        upscale_dir = comfy_paths.get_folder_paths("upscale_models")[0]
+    except Exception:
+        upscale_dir = os.path.join(comfy_paths.models_dir, "upscale_models")
+    os.makedirs(upscale_dir, exist_ok=True)
+
+    dest = os.path.join(upscale_dir, filename)
+    if os.path.isfile(dest):
+        return filename
+
+    cstr(f"[Comfy3D] fetching upscaler {filename} -> {upscale_dir}").msg.print()
+    download_url(url, filename, upscale_dir)
+    return filename
+
+
+def _diffusers_step_progress(total):
+    """A `callback_on_step_end` that drives ComfyUI's progress bar.
+
+    Diffusers pipelines print a tqdm bar to the worker's stdout, which the
+    ComfyUI UI never sees -- so a 50-step sample looks like a frozen node.
+    TRELLIS2 solves the same problem by calling ProgressBar(steps) around its
+    sampler loop (trellis2/samplers/flow_euler.py:141); this is the diffusers
+    equivalent, using the hook the pipeline already exposes.
+
+    MUST return a dict: the pipeline does callback_outputs.pop("latents", ...)
+    on the return value, so returning None raises AttributeError mid-sample.
+    An empty dict leaves every tensor untouched.
+    """
+    pbar = _comfy_progress_bar(total)
+
+    def _on_step_end(_pipe, _i, _t, _kwargs):
+        if pbar is not None:
+            pbar.update(1)
+        return {}
+
+    return _on_step_end
+
+
 def _alias_model_index_libraries(base_dir):
     """Make a model_index.json's vendored `library` names importable.
 
@@ -1531,10 +1581,28 @@ class Load_Triplane_Gaussian_Transformers:
     config_path = "TriplaneGaussian_config.yaml"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_file(cls):
+        """Absolute path to this node's config file.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         if cls.default_ckpt_name not in all_models_names:
             all_models_names += [cls.default_ckpt_name]
         
@@ -1557,9 +1625,9 @@ class Load_Triplane_Gaussian_Transformers:
 
         device = get_device()
 
-        cfg: ExperimentConfigTGS = load_config_tgs(self.config_path_abs)
+        cfg: ExperimentConfigTGS = load_config_tgs(self.config_file())
 
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
             
         cfg.system.weights=ckpt_path
 
@@ -1578,8 +1646,17 @@ class Triplane_Gaussian_Transformers:
     config_path = "TriplaneGaussian_config.yaml"
     
     @classmethod
+    def config_file(cls):
+        """Absolute path to this node's config file.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "reference_image": ("IMAGE", ),
@@ -1599,7 +1676,7 @@ class Triplane_Gaussian_Transformers:
     CATEGORY = "Comfy3D/Algorithm"
     
     def run_TGS(self, reference_image, reference_mask, tgs_model, cam_dist):        
-        cfg: ExperimentConfigTGS = load_config_tgs(self.config_path_abs)
+        cfg: ExperimentConfigTGS = load_config_tgs(self.config_file())
 
         cfg.data.cond_camera_distance = cam_dist
         cfg.data.eval_camera_distance = cam_dist
@@ -1706,12 +1783,23 @@ def _build_diffusers_pipe(config):
     ckpt_path = os.path.join(ckpt_download_dir, sub_dir) if sub_dir else ckpt_download_dir
 
     diffusers_pipeline_class = DIFFUSERS_PIPE_DICT[config["pipeline_name"]]
+    # Several of these repos name a VENDORED module as a sub-model's library:
+    # Wonder3D.models.unet_mv2d_condition, Era3D.mvdiffusion.models...,
+    # TripoSG.models... diffusers imports those bare, so they must be resolvable
+    # under their legacy top-level name before from_pretrained runs.
+    _alias_model_index_libraries(ckpt_path)
     # No custom_pipeline: it was '' in every shipped workflow, the classes in
     # DIFFUSERS_PIPE_DICT are imported directly, and it is the one argument that
     # would have diffusers fetch and exec code from a repo id.
+    # trust_remote_code: some of these repos ship a custom sub-model class as a
+    # .py beside the weights (ashawkey/imagedream-ipmv-diffusers/unet/mv_unet.py),
+    # and diffusers refuses to exec it without this. The file is TRACKED IN THIS
+    # REPO and HF_DOWNLOAD_IGNORE lists "*.py", so a download can never replace
+    # it -- what runs is pack-pinned code, not something fetched at load time.
     pipe = diffusers_pipeline_class.from_pretrained(
         ckpt_path,
         torch_dtype=WEIGHT_DTYPE,
+        trust_remote_code=True,
     ).to(DEVICE, WEIGHT_DTYPE)
 
     _try_enable_xformers(pipe)
@@ -1764,6 +1852,12 @@ def resolve_diffusers_pipe(config):
     # ModelPatcher, so ComfyUI can evict them like any checkpoint. resolve()
     # would hold them in a plain dict that unload_all_models() cannot reach.
     return model_cache.managed(kind, config, builder)
+
+
+# Same dispatch under an honest name. _PIPE_BUILDERS is keyed by `kind`, not by
+# socket type, so any socket carrying a recipe resolves through here -- an
+# LGM_MODEL no more needs its own registry than a DIFFUSERS_PIPE does.
+resolve_model_recipe = resolve_diffusers_pipe
 
 
 class Set_Diffusers_Pipeline_Scheduler:
@@ -1823,11 +1917,22 @@ class Wonder3D_MVDiffusion_Model:
     
     config_path = "Wonder3D_config.yaml"
     fix_cam_pose_dir = "Wonder3D/data/fixed_poses/nine_views"
-    
+
+    # Derived, not assigned as an INPUT_TYPES side effect. Same trap as the
+    # loaders: INPUT_TYPES need not have run in the process that executes the
+    # node, and here it bit a *consumer* rather than a loader.
+    @classmethod
+    def config_file(cls):
+        """Absolute path to Wonder3D_config.yaml."""
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
+    def cam_pose_dir(cls):
+        """Absolute path to the fixed nine-view camera poses."""
+        return os.path.join(MODULE_ROOT_PATH, cls.fix_cam_pose_dir)
+
     @classmethod
     def INPUT_TYPES(cls):
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
-        cls.fix_cam_pose_dir_abs = os.path.join(MODULE_ROOT_PATH, cls.fix_cam_pose_dir)
         return {
             "required": {
                 "mvdiffusion_pipe": ("DIFFUSERS_PIPE",),
@@ -1865,7 +1970,7 @@ class Wonder3D_MVDiffusion_Model:
 
         mvdiffusion_pipe = resolve_diffusers_pipe(mvdiffusion_pipe)
 
-        cfg = load_config_wonder3d(self.config_path_abs)
+        cfg = load_config_wonder3d(self.config_file())
 
         batch = self.prepare_data(reference_image, reference_mask)
 
@@ -1913,7 +2018,7 @@ class Wonder3D_MVDiffusion_Model:
     
     def prepare_data(self, ref_image, ref_mask):
         single_image = torch_imgs_to_pils(ref_image, ref_mask)[0]
-        dataset = MVSingleImageDataset(fix_cam_pose_dir=self.fix_cam_pose_dir_abs, num_views=6, img_wh=[256, 256], bg_color='white', single_image=single_image)
+        dataset = MVSingleImageDataset(fix_cam_pose_dir=self.cam_pose_dir(), num_views=6, img_wh=[256, 256], bg_color='white', single_image=single_image)
         return dataset[0]
 
 class MVDream_Model:
@@ -2032,26 +2137,29 @@ class Load_Large_Multiview_Gaussian_Model:
     CATEGORY = "Comfy3D/Import|Export"
     
     def load_LGM(self, model_name, lgb_config):
-
+        # Download now, build later. Returning the live model put a 528 MB
+        # LargeMultiviewGaussianModel on the wire, and it does not even pickle:
+        # __init__ assigns four lambdas (pos_act, scale_act, opacity_act,
+        # rgb_act) as instance attributes, and a local lambda has no importable
+        # qualname. The recipe is ~100 bytes of JSON instead.
         ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
+        cstr(f"[{self.__class__.__name__}] weights ready at {ckpt_path}").msg.print()
+        return (model_cache.recipe("lgm", ckpt=ckpt_path, config=lgb_config), )
 
-        def build(_config):
-            model = LargeMultiviewGaussianModel(config_defaults[lgb_config])
-            if ckpt_path.endswith('safetensors'):
-                ckpt = load_file(ckpt_path, device='cpu')
-            else:
-                ckpt = torch.load(ckpt_path, map_location='cpu')
-            model.load_state_dict(ckpt, strict=False)
-            # .half() on CPU: casting before the patcher sees the model means it
-            # measures the size that will actually be resident.
-            return model.half().eval()
 
-        lgm_model = model_cache.managed(
-            "lgm", {"ckpt": ckpt_path, "config": lgb_config}, build)
-
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
-        
-        return (lgm_model, )
+@_pipe_builder("lgm")
+def _build_lgm(config):
+    """Materialize an lgm recipe. Called only on a cache miss."""
+    model = LargeMultiviewGaussianModel(config_defaults[config["config"]])
+    ckpt_path = config["ckpt"]
+    if ckpt_path.endswith('safetensors'):
+        ckpt = load_file(ckpt_path, device='cpu')
+    else:
+        ckpt = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(ckpt, strict=False)
+    # .half() on CPU: casting before the patcher sees the model means it
+    # measures the size that will actually be resident.
+    return model.half().eval()
     
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
@@ -2078,6 +2186,7 @@ class Large_Multiview_Gaussian_Model:
     
     @torch.no_grad()
     def run_LGM(self, multiview_images, lgm_model):
+        lgm_model = resolve_model_recipe(lgm_model)
         ref_image_torch = prepare_torch_img(multiview_images, lgm_model.opt.input_size, lgm_model.opt.input_size, DEVICE_STR) # [4, 3, 256, 256]
         ref_image_torch = TF.normalize(ref_image_torch, IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
         rays_embeddings = lgm_model.prepare_default_rays(DEVICE_STR)
@@ -2626,13 +2735,31 @@ class Load_Convolutional_Reconstruction_Model:
     config_path = "CRM_configs/specs_objaverse_total.json"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_file(cls):
+        """Absolute path to this node's config file.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         if cls.default_ckpt_name not in all_models_names:
             all_models_names += [cls.default_ckpt_name]
             
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "model_name": (all_models_names, ),
@@ -2650,9 +2777,9 @@ class Load_Convolutional_Reconstruction_Model:
     
     def load_CRM(self, model_name):
         
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
         
-        crm_conf = json.load(open(self.config_path_abs))
+        crm_conf = json.load(open(self.config_file()))
 
         def build(_config):
             model = ConvolutionalReconstructionModel(crm_conf)
@@ -2773,14 +2900,32 @@ class Load_InstantMesh_Reconstruction_Model:
     config_root_dir = "InstantMesh_configs"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute config directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_root_dir)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         for ckpt_name in cls.default_ckpt_names:
             if ckpt_name not in all_models_names:
                 all_models_names += [ckpt_name]
                 
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_root_dir)
         return {
             "required": {
                 "model_name": (all_models_names, ),
@@ -2803,10 +2948,10 @@ class Load_InstantMesh_Reconstruction_Model:
         is_flexicubes = True if model_name.startswith('instant_mesh') else False
         
         config_name = model_name.split(".")[0] + ".yaml"
-        config_path = os.path.join(self.config_root_path_abs, config_name)
+        config_path = os.path.join(self.config_dir(), config_name)
         config = OmegaConf.load(config_path)
 
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
 
         def build(_config):
             model = instantiate_from_config(config.model_config)
@@ -2888,8 +3033,17 @@ class Era3D_MVDiffusion_Model:
     
     config_path = "Era3D_config.yaml"
     @classmethod
+    def config_file(cls):
+        """Absolute path to this node's config file.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "era3d_pipe": ("DIFFUSERS_PIPE",),
@@ -2933,7 +3087,7 @@ class Era3D_MVDiffusion_Model:
         # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
         # pipeline; resolve_diffusers_pipe passes the latter through.
         era3d_pipe = resolve_diffusers_pipe(era3d_pipe)
-        cfg = load_config_era3d(self.config_path_abs)
+        cfg = load_config_era3d(self.config_file())
         
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
 
@@ -3140,10 +3294,21 @@ class Load_Unique3D_Custom_UNet:
     default_repo_id = "MrForExample/Unique3D"
     config_root_dir = "Unique3D_configs"
 
+    # Derived, not INPUT_TYPES side effects. These are read by the module-level
+    # _apply_unique3d_unet(), which _build_diffusers_pipe replays on op replay --
+    # in a process where this node's INPUT_TYPES may never have been called.
+    @classmethod
+    def ckpt_dir(cls):
+        """Absolute Unique3D checkpoints directory."""
+        return os.path.join(CKPT_DIFFUSERS_PATH, cls.default_repo_id)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute Unique3D config directory."""
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_root_dir)
+
     @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_DIFFUSERS_PATH, cls.default_repo_id)
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_root_dir)
         return {
             "required": {
                 "pipe": ("DIFFUSERS_PIPE",),
@@ -3179,8 +3344,8 @@ def _apply_unique3d_unet(pipe, config_name):
     from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.custum_modules.unifield_processor import AttnConfig, ConfigurableUNet2DConditionModel
     from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.utils import load_config
 
-    cfg_path = os.path.join(cls.config_path_abs, config_name + ".yaml")
-    checkpoint_dir_path = os.path.join(cls.checkpoints_dir_abs, config_name)
+    cfg_path = os.path.join(cls.config_dir(), config_name + ".yaml")
+    checkpoint_dir_path = os.path.join(cls.ckpt_dir(), config_name)
     checkpoint_path = os.path.join(checkpoint_dir_path, "unet_state_dict.pth")
 
     cfg: ExprimentConfig = load_config(ExprimentConfig, cfg_path)
@@ -3536,9 +3701,27 @@ class Load_CharacterGen_MVDiffusion_Model:
     config_path = "CharacterGen_configs/Stage_2D_infer.yaml"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute config directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
             },
@@ -3555,11 +3738,11 @@ class Load_CharacterGen_MVDiffusion_Model:
     
     def load_model(self):
         # Download checkpoints
-        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE)
+        download_repo(self.default_repo_id, self.ckpt_dir(), ignore_patterns=HF_DOWNLOAD_IGNORE)
         # Load pre-trained models
-        character_mv_gen_pipe = Inference2D_API(checkpoint_root_path=self.checkpoints_dir_abs, **OmegaConf.load(self.config_root_path_abs))
+        character_mv_gen_pipe = Inference2D_API(checkpoint_root_path=self.ckpt_dir(), **OmegaConf.load(self.config_dir()))
         
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.checkpoints_dir_abs}").msg.print()
+        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.ckpt_dir()}").msg.print()
         return (character_mv_gen_pipe,)
     
 class CharacterGen_MVDiffusion_Model:
@@ -3638,9 +3821,27 @@ class Load_CharacterGen_Reconstruction_Model:
     config_path = "CharacterGen_configs/Stage_3D_infer.yaml"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute config directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
             },
@@ -3657,11 +3858,11 @@ class Load_CharacterGen_Reconstruction_Model:
     
     def load_model(self):
         # Download checkpoints
-        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE)
+        download_repo(self.default_repo_id, self.ckpt_dir(), ignore_patterns=HF_DOWNLOAD_IGNORE)
         # Load pre-trained models
-        character_lrm_pipe = Inference3D_API(checkpoint_root_path=self.checkpoints_dir_abs, cfg=load_config_cg3d(self.config_root_path_abs))
+        character_lrm_pipe = Inference3D_API(checkpoint_root_path=self.ckpt_dir(), cfg=load_config_cg3d(self.config_dir()))
         
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.checkpoints_dir_abs}").msg.print()
+        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.ckpt_dir()}").msg.print()
         return (character_lrm_pipe,)
     
 class CharacterGen_Reconstruction_Model:
@@ -3708,10 +3909,28 @@ class Load_Craftsman_Shape_Diffusion_Model:
     config_path = "Craftsman_config.yaml"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute config directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS, recursive=True)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS, recursive=True)
         if cls.default_ckpt_name not in all_models_names:
             all_models_names += [cls.default_ckpt_name]
 
@@ -3731,10 +3950,10 @@ class Load_Craftsman_Shape_Diffusion_Model:
     CATEGORY = "Comfy3D/Import|Export"
     
     def load_model(self, model_name):
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
         
         cfg: ExperimentConfigCraftsman
-        cfg = load_config_craftsman(self.config_root_path_abs)
+        cfg = load_config_craftsman(self.config_dir())
 
         def build(_config):
             model: BaseSystem = craftsman.find(cfg.system_type)(
@@ -3745,7 +3964,7 @@ class Load_Craftsman_Shape_Diffusion_Model:
 
         craftsman_model = model_cache.managed("craftsman", {"ckpt": ckpt_path}, build)
 
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.checkpoints_dir_abs}").msg.print()
+        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.ckpt_dir()}").msg.print()
         return (craftsman_model,)
     
 class Craftsman_Shape_Diffusion_Model:
@@ -3863,16 +4082,43 @@ class Load_CRM_T2I_V2_Models:
     config_path = "CRM_T2I_V2_configs"
     
     @classmethod
+    def crm_ckpt_dir(cls):
+        """Absolute CRM checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.crm_checkpoints_dir)
+
+    @classmethod
+    def t2i_v2_ckpt_dir(cls):
+        """Absolute T2I-V2 checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.t2i_v2_checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute config directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.crm_checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.crm_checkpoints_dir)
-        all_crm_models_names = get_list_filenames(cls.crm_checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_crm_models_names = get_list_filenames(cls.crm_ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         for ckpt_name in cls.default_crm_ckpt_name:
             if ckpt_name not in all_crm_models_names:
                 all_crm_models_names += [ckpt_name]
                 
-        cls.t2i_v2_checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.t2i_v2_checkpoints_dir)
             
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "crm_model_name": (all_crm_models_names, ),
@@ -3895,11 +4141,11 @@ class Load_CRM_T2I_V2_Models:
         
         from .Gen_3D_Modules.CRM_T2I_V2.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
         
-        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_checkpoints_dir_abs).to(DEVICE, dtype=WEIGHT_DTYPE)
+        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_ckpt_dir()).to(DEVICE, dtype=WEIGHT_DTYPE)
 
-        crm_config_path = os.path.join(self.config_root_path_abs, crm_config_path)
+        crm_config_path = os.path.join(self.config_dir(), crm_config_path)
         
-        ckpt_path = resume_or_download_model_from_hf(self.crm_checkpoints_dir_abs, self.default_crm_repo_id, crm_model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.crm_ckpt_dir(), self.default_crm_repo_id, crm_model_name, self.__class__.__name__)
             
         crm_config = OmegaConf.load(crm_config_path)
 
@@ -4016,22 +4262,58 @@ class Load_CRM_T2I_V3_Models:
     config_path = "CRM_T2I_V3_configs"
     
     @classmethod
+    def crm_ckpt_dir(cls):
+        """Absolute CRM checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.crm_checkpoints_dir)
+
+    @classmethod
+    def crm_t2i_v3_ckpt_dir(cls):
+        """Absolute CRM T2I-V3 checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.crm_t2i_v3_checkpoints_dir)
+
+    @classmethod
+    def t2i_v2_ckpt_dir(cls):
+        """Absolute T2I-V2 checkpoints directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.t2i_v2_checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute config directory.
+
+        Derived on demand, not assigned as an INPUT_TYPES side effect:
+        INPUT_TYPES need not have run in the process that executes
+        this node. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.crm_checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.crm_checkpoints_dir)
-        all_crm_models_names = get_list_filenames(cls.crm_checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_crm_models_names = get_list_filenames(cls.crm_ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         for ckpt_name in cls.default_crm_ckpt_name:
             if ckpt_name not in all_crm_models_names:
                 all_crm_models_names += [ckpt_name]
                 
-        cls.crm_t2i_v3_checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.crm_t2i_v3_checkpoints_dir)
-        all_crm_t2i_v3_models_names = get_list_filenames(cls.crm_t2i_v3_checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_crm_t2i_v3_models_names = get_list_filenames(cls.crm_t2i_v3_ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         for ckpt_name in cls.default_crm_t2i_v3_ckpt_name:
             if ckpt_name not in all_crm_t2i_v3_models_names:
                 all_crm_t2i_v3_models_names += [ckpt_name] 
                 
-        cls.t2i_v2_checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.t2i_v2_checkpoints_dir)
             
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "crm_model_name": (all_crm_models_names, ),
@@ -4042,13 +4324,26 @@ class Load_CRM_T2I_V3_Models:
             },
         }
     
+    # RealESRGAN_x4plus is what the shipped CRM_T2I_V3 texture workflows load
+    # through the native UpscaleModelLoader. Same GitHub release MVAdapter
+    # already pulls x2plus from (mvadapter_node_utils.py:424).
+    UPSCALER_NAME = "RealESRGAN_x4plus.pth"
+    UPSCALER_URL = ("https://github.com/xinntao/Real-ESRGAN/releases/download/"
+                    "v0.1.0/RealESRGAN_x4plus.pth")
+
+    # upscale_model_name is APPENDED so slots 0-1 keep their indices in saved
+    # graphs. Typed COMBO, not STRING: UpscaleModelLoader declares model_name as
+    # ("COMBO", {...}), and ComfyUI matches links on that type string -- a
+    # STRING output simply will not connect to it.
     RETURN_TYPES = (
         "T2IADAPTER_V2",
         "CRM_MVDIFFUSION_SAMPLER_V3",
+        "COMBO",
     )
     RETURN_NAMES = (
         "t2iadapter_v2",
         "crm_mvdiffusion_sampler_v3",
+        "upscale_model_name",
     )
     FUNCTION = "load_CRM"
     CATEGORY = "Comfy3D/Import|Export"
@@ -4057,11 +4352,11 @@ class Load_CRM_T2I_V3_Models:
         
         from .Gen_3D_Modules.CRM_T2I_V3.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
         
-        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_checkpoints_dir_abs).to(DEVICE, dtype=WEIGHT_DTYPE)
+        t2iadapter_v2 = T2IAdapterV2.from_pretrained(self.t2i_v2_ckpt_dir()).to(DEVICE, dtype=WEIGHT_DTYPE)
 
-        crm_config_path = os.path.join(self.config_root_path_abs, crm_config_path)
+        crm_config_path = os.path.join(self.config_dir(), crm_config_path)
         
-        ckpt_path = resume_or_download_model_from_hf(self.crm_checkpoints_dir_abs, self.default_crm_repo_id, crm_model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.crm_ckpt_dir(), self.default_crm_repo_id, crm_model_name, self.__class__.__name__)
             
         crm_config = OmegaConf.load(crm_config_path)
 
@@ -4081,12 +4376,14 @@ class Load_CRM_T2I_V3_Models:
         mvdiffusion_model = unet.diffusion_model
         self.inject_lora(mvdiffusion_model, rank, use_dora)
         
-        pretrained_lora_model_path = os.path.join(self.crm_t2i_v3_checkpoints_dir_abs, crm_t2i_v3_model_name)
+        pretrained_lora_model_path = os.path.join(self.crm_t2i_v3_ckpt_dir(), crm_t2i_v3_model_name)
         unet.load_state_dict(torch.load(pretrained_lora_model_path, map_location="cpu"), strict=False)
         
+        upscale_model_name = _ensure_upscale_model(self.UPSCALER_URL, self.UPSCALER_NAME)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path} and {pretrained_lora_model_path}").msg.print()
-        
-        return (t2iadapter_v2, crm_mvdiffusion_sampler_v3, )
+
+        return (t2iadapter_v2, crm_mvdiffusion_sampler_v3, upscale_model_name, )
     
     def inject_lora(self, mvdiffusion_model, rank=64, use_dora=False):
         from peft import LoraConfig, inject_adapter_in_model
@@ -6268,6 +6565,7 @@ class PartCrafter_Generate:
             guidance_scale=guidance_scale,
             max_num_expanded_coords=max_num_expanded_coords,
             use_flash_decoder=use_flash_decoder,
+            callback_on_step_end=_diffusers_step_progress(num_inference_steps),
         ).meshes
         
         # Ensure no None outputs 

@@ -45,9 +45,9 @@ if is_xformers_available():
     import xformers
     import xformers.ops
 else:
-    xformers = None
-
-
+    # No xformers in this env; route to torch SDPA instead of leaving
+    # `xformers = None` for the unguarded call sites below to trip over.
+    from .....shared_utils.xformers_compat import xformers
 @dataclass
 class TransformerMV2DModelOutput(BaseOutput):
     """

@@ -40,10 +40,15 @@ class multiviewDiffusionNet:
         )
 
         model_path = os.path.join(model_path, "hunyuan3d-paintpbr-v2-1")
+        # custom_pipeline is an absolute path to hy3dpaint/hunyuanpaintpbr,
+        # vendored in this pack and tracked in git. diffusers will not exec a
+        # custom pipeline without trust_remote_code, so this loads local,
+        # reviewable code -- nothing is fetched from the hub to run it.
         pipeline = DiffusionPipeline.from_pretrained(
             model_path,
-            custom_pipeline=custom_pipeline, 
-            torch_dtype=torch.float16
+            custom_pipeline=custom_pipeline,
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
         )
 
         pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")

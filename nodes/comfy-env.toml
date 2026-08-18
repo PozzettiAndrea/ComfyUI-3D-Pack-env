@@ -26,6 +26,13 @@ cxx-compiler = "*"
 comfy-kitchen = "*"
 comfy-aimdo = "*"
 
+# spconv's runtime codegen dependency. spconv and cumm come from [cuda] above as
+# CUDA-matched wheels, but neither pulls pccm in, so `import spconv.pytorch`
+# raises ModuleNotFoundError: pccm -- which surfaces far away, as a Stable3DGen
+# node failing to build its Trellis pipeline. ComfyUI-UniRig declares it the
+# same way alongside the same spconv/cumm wheels.
+pccm = "*"
+
 # xformers deliberately absent. It caps flash-attn at <=2.8.2
 # (xformers/ops/fmha/flash.py) and raises ImportError above that, while the
 # cuda-wheels farm builds flash_attn 2.8.3. diffusers imports xformers, and 94

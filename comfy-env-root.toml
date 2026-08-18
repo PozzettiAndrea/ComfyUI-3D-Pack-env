@@ -4,3 +4,4 @@ TRIMESH = "custom"
 [node_reqs]
 ComfyUI-KJNodes = "kijai/ComfyUI-KJNodes"
 ComfyUI-VideoHelperSuite = "Kosinkadink/ComfyUI-VideoHelperSuite"
+eden-comfyui = "edenartlab/eden-comfyui"
