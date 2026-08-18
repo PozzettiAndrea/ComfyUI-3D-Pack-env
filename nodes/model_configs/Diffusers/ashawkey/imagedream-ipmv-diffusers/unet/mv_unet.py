@@ -11,9 +11,44 @@ from einops import rearrange, repeat
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.models.modeling_utils import ModelMixin
 
-# require xformers!
-import xformers
-import xformers.ops
+# xformers if present, torch SDPA otherwise.
+#
+# This pack ships no xformers -- it caps flash-attn at <=2.8.2 while the wheels
+# farm builds 2.8.3, and installing it took node registration to zero. Upstream
+# imports it unconditionally here ("require xformers!"), so loading this UNet
+# raised ModuleNotFoundError before a single tensor moved.
+#
+# The fallback is inlined rather than imported from the pack's
+# shared_utils.xformers_compat: diffusers COPIES this file into
+# ~/.cache/huggingface/modules/diffusers_modules/local/ and executes it there,
+# outside the package, so a relative import would not resolve.
+try:
+    import xformers
+    import xformers.ops
+except ImportError:
+    import types as _types
+
+    def _memory_efficient_attention(query, key, value, attn_bias=None, p=0.0,
+                                    scale=None, *, op=None):
+        """xformers' signature on torch SDPA.
+
+        Both call sites below pass (b*heads, seq, dim_head) with attn_bias=None,
+        which SDPA accepts as-is. The 4D branch exists because xformers' layout
+        is (B, M, H, K) while SDPA wants (B, H, M, K) -- getting that transpose
+        wrong swaps heads with tokens and returns a plausible wrong answer
+        instead of an error. `op` selects an xformers kernel; there is none.
+        """
+        if query.ndim == 4:
+            q, k, v = (t.transpose(1, 2) for t in (query, key, value))
+            out = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=attn_bias, dropout_p=p, scale=scale)
+            return out.transpose(1, 2)
+        return F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attn_bias, dropout_p=p, scale=scale)
+
+    xformers = _types.SimpleNamespace(
+        ops=_types.SimpleNamespace(
+            memory_efficient_attention=_memory_efficient_attention))
 
 from kiui.cam import orbit_camera
 
