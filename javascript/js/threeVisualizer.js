@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 //import { api } from '/scripts/ui/api.ts';
-import {getRGBValue} from '/extensions/ComfyUI-3D-Pack/js/sharedFunctions.js';
+import {getRGBValue} from './sharedFunctions.js';
 
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -106,8 +106,23 @@ async function main(filepath="") {
     // Check if file name is valid
     if (/^.+\.[a-zA-Z]+$/.test(filepath)){
 
-        let params = {"filepath": filepath};
-        currentURL = url + '/viewfile?' + new URLSearchParams(params);
+        // ComfyUI's own /view when the file is one it already serves
+        // (output/input/temp), the pack's /viewfile only for paths outside
+        // those. /view needs no client-IP allow-list, which is what made
+        // /viewfile 404 for every browser that is not on the ComfyUI host --
+        // through a tunnel, or simply from another machine on the LAN.
+        const served = filepath.match(/[\\/](output|input|temp)[\\/](.*)$/);
+        if (served) {
+            const rel = served[2].replace(/\\/g, "/");
+            const cut = rel.lastIndexOf("/");
+            currentURL = url + '/view?' + new URLSearchParams({
+                filename:  cut === -1 ? rel : rel.slice(cut + 1),
+                subfolder: cut === -1 ? ""  : rel.slice(0, cut),
+                type:      served[1],
+            });
+        } else {
+            currentURL = url + '/viewfile?' + new URLSearchParams({"filepath": filepath});
+        }
 
         var filepathSplit = filepath.split('.');
         var fileExt = filepathSplit.pop().toLowerCase();

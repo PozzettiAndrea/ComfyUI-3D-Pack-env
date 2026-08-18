@@ -267,33 +267,67 @@ class Preview_3DMesh:
             "required": {
                 "mesh_file_path": ("STRING", {"default": '', "multiline": False}),
             },
+            "optional": {
+                # Connect a mesh directly instead of saving it and pasting the
+                # path back in. The viewer contract is unchanged -- it still
+                # receives a path -- this just writes the file for you.
+                "mesh": ("TRIMESH",),
+            },
         }
-    
+
     OUTPUT_NODE = True
-    RETURN_TYPES = ()
+    # Pass the mesh through so the preview drops inline rather than ending a
+    # branch. An unconnected `mesh` yields None, which downstream ignores.
+    RETURN_TYPES = ("TRIMESH",)
+    RETURN_NAMES = ("mesh",)
     FUNCTION = "preview_mesh"
     CATEGORY = "Comfy3D/Visualize"
-    
-    def preview_mesh(self, mesh_file_path):
-        
+
+    def preview_mesh(self, mesh_file_path, mesh=None):
+
+        if mesh is not None:
+            # .glb because threeVisualizer already has GLTFLoader. Written under
+            # output/ so ComfyUI's own /view can serve it: /view needs no
+            # client-IP allow-list, unlike this pack's /viewfile, which 404s for
+            # any browser that is not on the ComfyUI host.
+            # _wire_in, and Mesh.write rather than trimesh.export: the texture
+            # only survives that way. A painted mesh carries a UV *atlas*, so
+            # ft != f, and to_trimesh deliberately refuses to put a mismatched
+            # uv on the wire Trimesh -- the albedo rides in extras as a tensor
+            # instead. trimesh.export() therefore has nothing to bake and the
+            # preview comes out grey. Mesh.write_glb already handles exactly
+            # this: align_v_to_vt() expands the atlas to per-vertex UV, then
+            # the albedo goes into the GLB buffer as a baseColorTexture.
+            m = _wire_in(mesh)
+            mesh_file_path = parse_save_filename(
+                os.path.join("Preview3DMesh", "preview_%Y-%m-%d-%H%M%S%f.glb"),
+                comfy_paths.output_directory,
+                SUPPORTED_3D_EXTENSIONS,
+                self.__class__.__name__,
+            )
+            if mesh_file_path is not None:
+                m.write(mesh_file_path)
+            else:
+                mesh_file_path = ""
+
         mesh_folder_path, filename = os.path.split(mesh_file_path)
-        
+
         if not os.path.isabs(mesh_file_path):
             mesh_file_path = os.path.join(comfy_paths.output_directory, mesh_folder_path, filename)
-        
+
         if not filename.lower().endswith(SUPPORTED_3D_EXTENSIONS):
             cstr(f"[{self.__class__.__name__}] File name {filename} does not end with supported 3D file extensions: {SUPPORTED_3D_EXTENSIONS}").error.print()
             mesh_file_path = ""
-        
+
         print(f"[Preview_3DMesh] Final mesh path: {mesh_file_path}")
         print(f"[Preview_3DMesh] File exists: {os.path.exists(mesh_file_path) if mesh_file_path else False}")
-        
+
         previews = [
             {
                 "filepath": mesh_file_path,
             }
         ]
-        return {"ui": {"previews": previews}, "result": ()}
+        return {"ui": {"previews": previews}, "result": (mesh,)}
 
 class Load_3D_Mesh:
 

@@ -1,6 +1,6 @@
 import * as SPLAT from 'gsplat';
 //import { api } from '/scripts/api.js'
-import {getRGBValue} from '/extensions/ComfyUI-3D-Pack/js/sharedFunctions.js';
+import {getRGBValue} from './sharedFunctions.js';
 
 const visualizer = document.getElementById("visualizer");
 const canvas = document.getElementById("canvas");
@@ -58,8 +58,21 @@ async function main(filepath="") {
     // Check if file name is valid
     if (/^.+\.[a-zA-Z]+$/.test(filepath)){
 
-        let params = {"filepath": filepath};
-        currentURL = url + '/viewfile?' + new URLSearchParams(params);
+        // Same as threeVisualizer: ComfyUI's /view for files it already
+        // serves, /viewfile only for paths outside output/input/temp. /view
+        // has no client-IP allow-list, so it works off-host and via a tunnel.
+        const served = filepath.match(/[\\/](output|input|temp)[\\/](.*)$/);
+        if (served) {
+            const rel = served[2].replace(/\\/g, "/");
+            const cut = rel.lastIndexOf("/");
+            currentURL = url + '/view?' + new URLSearchParams({
+                filename:  cut === -1 ? rel : rel.slice(cut + 1),
+                subfolder: cut === -1 ? ""  : rel.slice(0, cut),
+                type:      served[1],
+            });
+        } else {
+            currentURL = url + '/viewfile?' + new URLSearchParams({"filepath": filepath});
+        }
         var splat = null;
 
         var fileExt = filepath.split('.').pop().toLowerCase();

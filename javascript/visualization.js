@@ -1,5 +1,14 @@
 import { app } from "/scripts/app.js"
 
+// Locate our own /extensions/<pack>/ mount instead of naming the pack. The
+// folder is the pack directory (or [project] name), so a fork or a rename
+// changes it -- hardcoding "ComfyUI-3D-Pack" is what 404'd every viewer in
+// this fork, which ships as ComfyUI-3D-Pack-enved.
+const EXTENSION_FOLDER = (() => {
+    const match = import.meta.url.match(/\/extensions\/([^/]+)\//)
+    return match ? match[1] : "ComfyUI-3D-Pack-enved"
+})()
+
 class Visualizer {
     constructor(node, container, visualSrc) {
         this.node = node
@@ -9,7 +18,7 @@ class Visualizer {
             scrolling: "no",
             overflow: "hidden",
         })
-        this.iframe.src = "/extensions/ComfyUI-3D-Pack/html/" + visualSrc + ".html"
+        this.iframe.src = `/extensions/${EXTENSION_FOLDER}/html/${visualSrc}.html`
         container.appendChild(this.iframe)
     }
 

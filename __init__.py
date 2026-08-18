@@ -5,8 +5,8 @@ import here is comfy_env itself. All model code lives in nodes/ and is
 imported inside the isolated environment by register_nodes().
 
 Everything web-facing now lives together:
-  web/            browser assets (three.js / gaussian-splat viewers) served
-                  to the frontend via WEB_DIRECTORY
+  javascript/     browser assets (three.js / gaussian-splat viewers), served
+                  to the frontend via [tool.comfy] web in pyproject.toml
   this file       the single aiohttp route those viewers call, /viewfile
 Upstream kept that route in a separate webserver/ package that reached into
 nodes/ for a logger; it has been folded in here because it must run in the
@@ -85,5 +85,7 @@ except Exception as e:
 # torch, diffusers or any model code.
 NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS = register_nodes()
 
-WEB_DIRECTORY = "./web"
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
+# Frontend assets are declared in pyproject.toml ([tool.comfy] web =
+# "javascript"), served at /extensions/ComfyUI-3D-Pack-enved/. No WEB_DIRECTORY
+# attribute -- it would double-register the dir under a second mount key.
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

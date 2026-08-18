@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/extensions/ComfyUI-3D-Pack/style/gsStyle.css">
-  <link type="text/css" rel="stylesheet" href="/extensions/ComfyUI-3D-Pack/style/coloris.min.css">
-  <link type="text/css" rel="stylesheet" href="/extensions/ComfyUI-3D-Pack/style/sharedStyle.css">
+  <link rel="stylesheet" href="../style/gsStyle.css">
+  <!-- coloris.min.css was never shipped; the file is coloris.css, which is
+       what threeVisualizer.html already loads. Pre-existing 404. -->
+  <link type="text/css" rel="stylesheet" href="../style/coloris.css">
+  <link type="text/css" rel="stylesheet" href="../style/sharedStyle.css">
 </head>
 <body>
   <div id="progress-container">
@@ -26,10 +28,10 @@
 			  }
 			}
 		</script>
-    <script id="visualizer" type="module" filepath="" timestamp="" crossorigin src="/extensions/ComfyUI-3D-Pack/js/gsVisualizer.js"></script>
+    <script id="visualizer" type="module" filepath="" timestamp="" crossorigin src="../js/gsVisualizer.js"></script>
   </div>
 
-  <script src="/extensions/ComfyUI-3D-Pack/js/coloris.js"></script>
+  <script src="../js/coloris.js"></script>
   <script>
     Coloris({
       el: '.coloris',
