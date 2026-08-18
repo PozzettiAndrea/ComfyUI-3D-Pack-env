@@ -604,7 +604,15 @@ def K_nearest_neighbors_func(
         else:
             return nn[0, :, :, :], idx[0, :, :], dist[0, :, :]
 
-def interpolate_texture_map_attr(mesh, texture_size: int = 256, batch_size: int = 64, interpolate_color=True, interpolate_position=False):
+def interpolate_texture_map_attr(mesh, texture_size: int = 256, batch_size: int = 64, interpolate_color=True, interpolate_position=False, progress_callback=None):
+    """Bake per-vertex attributes into a texture map, one UV tile at a time.
+
+    progress_callback, if given, is called after each tile as
+    callback(tiles_done, tiles_total). The tile count is
+    ceil(texture_size / batch_size) ** 2, so it grows quadratically in
+    resolution and shrinks quadratically in batch_size -- 64 tiles at the
+    1024/128 default, 4096 at 8192/128.
+    """
     # Get UV coordinates and faces
     if mesh.vt is None:
         mesh.auto_uv()
@@ -637,8 +645,11 @@ def interpolate_texture_map_attr(mesh, texture_size: int = 256, batch_size: int 
     batch_idx_range = torch.arange(0, batch_size**2, 1, device=verts_colors.device, dtype=torch.long)
     
     all_face_verts = verts_uvs_idx[faces]
-    for uv_i in range(0, texture_size_minus_one, batch_size):
-        for uv_j in range(0, texture_size_minus_one, batch_size):
+    tile_starts = range(0, texture_size_minus_one, batch_size)
+    tiles_total = len(tile_starts) ** 2
+    tiles_done = 0
+    for uv_i in tile_starts:
+        for uv_j in tile_starts:
             # Divide faces into squre batchs
             faces_mask = (uv_i <= all_face_verts[:, :, 0]) & (all_face_verts[:, :, 0] <= uv_i + batch_size) & (uv_j <= all_face_verts[:, :, 1]) & (all_face_verts[:, :, 1] <= uv_j + batch_size)
             faces_mask, _ = torch.max(faces_mask, dim=1)
@@ -683,5 +694,9 @@ def interpolate_texture_map_attr(mesh, texture_size: int = 256, batch_size: int 
                 positions = positions[mask_idx][mask]
                 interpolated_positions = (a[:, None] * positions[:, 0] + (b[:, None] * positions[:, 1]) + (c[:, None] * positions[:, 2]))
                 position_map[uv_coords[:, 1], uv_coords[:, 0]] = interpolated_positions
-            
+
+            tiles_done += 1
+            if progress_callback is not None:
+                progress_callback(tiles_done, tiles_total)
+
     return texture_map, position_map

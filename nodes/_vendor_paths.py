@@ -96,3 +96,40 @@ def resolve(dotted: str) -> str:
 def import_module(dotted: str):
     """importlib.import_module, with legacy top-level names resolved."""
     return importlib.import_module(resolve(dotted))
+
+
+def alias_modules(*dotted: str) -> list[str]:
+    """Register vendored modules in sys.modules under their legacy names.
+
+    resolve()/import_module() only help at call sites we control. Some imports
+    are issued by third-party code we cannot route: diffusers reads the
+    `library` of each sub-model out of a model_index.json and feeds it straight
+    to importlib (pipeline_loading_utils.py:459), so wgsxm/PartCrafter's
+
+        "scheduler": ["partcrafter_src.schedulers.scheduling_rectified_flow", ...]
+
+    raises ModuleNotFoundError: partcrafter_src.
+
+    This maps the legacy key onto the module object our package-relative import
+    already produced -- the SAME object, not a second copy. That identity
+    matters: diffusers checks the loaded sub-model against the classes the
+    pipeline declares, and two copies of one module yield two distinct classes
+    that fail those checks.
+
+    Deliberately NOT a sys.path entry or a sys.meta_path hook. Both would
+    promote all 70-odd vendored directory names to importable top-level names
+    process-wide, which is exactly what this package removed. Only the names
+    passed here are aliased, and only when they resolve into this package.
+
+    Returns the names actually aliased.
+    """
+    done = []
+    for name in dotted:
+        if not name or name in sys.modules:
+            continue
+        target = resolve(name)
+        if target == name:
+            continue          # not one of ours -- leave it to the normal machinery
+        sys.modules[name] = importlib.import_module(target)
+        done.append(name)
+    return done

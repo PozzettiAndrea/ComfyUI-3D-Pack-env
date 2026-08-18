@@ -83,7 +83,6 @@ pymeshfix = "*"
 fast-simplification = "*"
 gpytoolbox = "*"
 PyMCubes = "*"
-libigl = "*"
 pyvista = "*"
 igraph = "*"
 # open3d deliberately absent: wheel-only, cp38-cp312, no sdist -- it pins the

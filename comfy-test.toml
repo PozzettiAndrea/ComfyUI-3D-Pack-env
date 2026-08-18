@@ -2,5 +2,17 @@
 levels = ["syntax", "coverage", "install", "javascript", "registration", "instantiation", "execution"]
 publish = true
 
+[test.workflows]
+timeout = 600
+cpu = []
+cuda = [
+    "Hunyuan3D_V2_Fast",
+    "Hunyuan3D_V1_lite",
+    "Hunyuan3D_V1_std",
+    "Hunyuan3D_V2",
+    "PartCrafter"
+]
+
+# hunyuan3d_v2, 
 [test.platforms]
 platforms = ["linux", "macos", "windows", "windows_portable", "macos_desktop", "windows_desktop", "linux_cuda", "windows_cuda", "windows_portable_cuda", "windows_desktop_cuda"]

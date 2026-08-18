@@ -810,7 +810,48 @@ class Mesh:
 
                 gltf.buffers[0].byteLength = byteOffset
 
-            
+
+        # vertex colours -> COLOR_0
+        #
+        # Appended AFTER the texture block on purpose. That block hardcodes
+        # bufferView/accessor indices 2, 3 and 4; inserting here would shift
+        # them and silently point the albedo image at the wrong bytes. These
+        # indices are computed instead, so this is correct with or without a
+        # texture.
+        #
+        # align_v_to_vt() above rewrites self.v, and remaps self.vc with it
+        # (see :549), so vc is already per-vertex against v_np here.
+        if self.vc is not None:
+            vc_np = self.vc.detach().cpu().numpy().astype(np.float32)[:, :3]
+            if len(vc_np) != len(v_np):
+                print(f"[write_glb] skipping vertex colors: {len(vc_np)} colors "
+                      f"for {len(v_np)} vertices")
+            else:
+                vc_np_blob = vc_np.tobytes()
+                gltf.meshes[0].primitives[0].attributes.COLOR_0 = len(gltf.accessors)
+                gltf.bufferViews.append(
+                    pygltflib.BufferView(
+                        buffer=0,
+                        byteOffset=byteOffset,
+                        byteLength=len(vc_np_blob),
+                        byteStride=12,  # vec3
+                        target=pygltflib.ARRAY_BUFFER,
+                    )
+                )
+                gltf.accessors.append(
+                    pygltflib.Accessor(
+                        bufferView=len(gltf.bufferViews) - 1,
+                        componentType=pygltflib.FLOAT,
+                        count=len(vc_np),
+                        type=pygltflib.VEC3,
+                        max=vc_np.max(axis=0).tolist(),
+                        min=vc_np.min(axis=0).tolist(),
+                    )
+                )
+                blob += vc_np_blob
+                byteOffset += len(vc_np_blob)
+                gltf.buffers[0].byteLength = byteOffset
+
         # set actual data
         gltf.set_binary_blob(blob)
 

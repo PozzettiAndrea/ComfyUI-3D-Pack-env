@@ -2,6 +2,7 @@ import os
 import gc
 import math
 import copy
+import time
 from enum import Enum
 from collections import OrderedDict
 import folder_paths as comfy_paths
@@ -38,6 +39,7 @@ from PIL import Image
 
 from . import model_cache
 from .mesh_processer.interop import wire_in as _wire_in, wire_out as _wire_out
+from .mesh_processer.interop import _EXTRAS_KEY as _MESH_EXTRAS_KEY
 from .shared_utils.model_downloader import (
     get_model_dir, download_file, download_files, download_repo, download_url,
 )
@@ -99,6 +101,7 @@ from .Gen_3D_Modules.CRM_T2I_V2.model.t2i_adapter_v2 import T2IAdapterV2
 from .Gen_3D_Modules.CRM_T2I_V3.model.crm.sampler import CRMSamplerV3
 from .Gen_3D_Modules.Hunyuan3D_V1.mvd.hunyuan3d_mvd_std_pipeline import HunYuan3D_MVD_Std_Pipeline
 from .Gen_3D_Modules.Hunyuan3D_V1.mvd.hunyuan3d_mvd_lite_pipeline import Hunyuan3D_MVD_Lite_Pipeline
+from .Gen_3D_Modules.Hunyuan3D_V1.mvd.hunyuan3d_mvd_std_pipeline import HunYuan3D_MVD_Std_Pipeline
 from .Gen_3D_Modules.Hunyuan3D_V1.infer import Views2Mesh
 from .Gen_3D_Modules.Hunyuan3D_V2.hy3dgen.shapegen import FaceReducer, FloaterRemover, DegenerateFaceRemover, Hunyuan3DDiTFlowMatchingPipeline
 from .Gen_3D_Modules.Hunyuan3D_V2.hy3dgen.texgen import Hunyuan3DPaintPipeline
@@ -114,7 +117,6 @@ from .Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.utils.torchvision_fix import apply_
 apply_fix()
 from .Gen_3D_Modules.PartCrafter.partcrafter_src.pipelines.pipeline_partcrafter import PartCrafterPipeline
 from .Gen_3D_Modules.PartCrafter.partcrafter_src.utils.data_utils import get_colored_mesh_composition
-from .Gen_3D_Modules.PartCrafter.partcrafter_src.utils.render_utils import explode_mesh
 import zipfile
 
 
@@ -129,6 +131,47 @@ from .shared_utils.camera_utils import (
     compose_orbit_camposes
 )
 from .shared_utils.log_utils import cstr
+from . import _vendor_paths
+
+
+def _alias_model_index_libraries(base_dir):
+    """Make a model_index.json's vendored `library` names importable.
+
+    diffusers resolves each sub-model's library with a bare
+    importlib.import_module (pipeline_loading_utils.py:459), which never sees
+    _vendor_paths.resolve(). Reading the names out of the file rather than
+    hard-coding them keeps this correct if the index changes.
+    """
+    index_path = os.path.join(base_dir, "model_index.json")
+    try:
+        with open(index_path) as fh:
+            index = json.load(fh)
+    except (OSError, ValueError) as e:
+        cstr(f"[Comfy3D] could not read {index_path}: {e}").warning.print()
+        return
+    libraries = [
+        v[0] for v in index.values()
+        if isinstance(v, list) and v and isinstance(v[0], str)
+    ]
+    aliased = _vendor_paths.alias_modules(*libraries)
+    if aliased:
+        cstr(f"[Comfy3D] aliased vendored modules: {', '.join(aliased)}").msg.print()
+
+
+def _comfy_progress_bar(total):
+    """comfy.utils.ProgressBar(total), or None when it is unavailable.
+
+    Same guard as shared_utils/model_downloader.py: this code runs inside the
+    isolated worker env, where ComfyUI is importable in practice but is not a
+    declared dependency of it. A missing progress bar must never cost us the
+    node, so callers treat None as "just skip the UI bar".
+    """
+    try:
+        import comfy.utils
+    except ImportError:
+        return None
+    return comfy.utils.ProgressBar(total)
+
 from .shared_utils.common_utils import parse_save_filename, get_list_filenames, resume_or_download_model_from_hf
 
 DIFFUSERS_PIPE_DICT = OrderedDict([
@@ -142,6 +185,7 @@ DIFFUSERS_PIPE_DICT = OrderedDict([
     ("Unique3DImageCustomPipeline", StableDiffusionImageCustomPipeline),
     ("HunYuan3DMVDStdPipeline", HunYuan3D_MVD_Std_Pipeline),
     ("Hunyuan3DMVDLitePipeline", Hunyuan3D_MVD_Lite_Pipeline),
+    ("Hunyuan3DMVDStdPipeline", HunYuan3D_MVD_Std_Pipeline),
     ("Hunyuan3DDiTFlowMatchingPipeline", Hunyuan3DDiTFlowMatchingPipeline),
     ("Hunyuan3DPaintPipeline", Hunyuan3DPaintPipeline),
     ("TripoSGPipeline", TripoSGPipeline),
@@ -268,14 +312,12 @@ class Preview_3DMesh:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Mesh in, nothing else. The node used to require a STRING path and take
+        # the mesh optionally, so every graph ran the mesh through Save 3D Mesh
+        # purely to get a path to hand back -- 69 links across the shipped
+        # workflows did exactly that, and not one used the path widget.
         return {
             "required": {
-                "mesh_file_path": ("STRING", {"default": '', "multiline": False}),
-            },
-            "optional": {
-                # Connect a mesh directly instead of saving it and pasting the
-                # path back in. The viewer contract is unchanged -- it still
-                # receives a path -- this just writes the file for you.
                 "mesh": ("TRIMESH",),
             },
         }
@@ -288,7 +330,7 @@ class Preview_3DMesh:
     FUNCTION = "preview_mesh"
     CATEGORY = "Comfy3D/Visualize"
 
-    def preview_mesh(self, mesh_file_path, mesh=None):
+    def preview_mesh(self, mesh):
 
         if mesh is not None:
             # .glb because threeVisualizer already has GLTFLoader. Written under
@@ -315,17 +357,13 @@ class Preview_3DMesh:
             else:
                 mesh_file_path = ""
 
-        mesh_folder_path, filename = os.path.split(mesh_file_path)
-
-        if not os.path.isabs(mesh_file_path):
-            mesh_file_path = os.path.join(comfy_paths.output_directory, mesh_folder_path, filename)
-
-        if not filename.lower().endswith(SUPPORTED_3D_EXTENSIONS):
-            cstr(f"[{self.__class__.__name__}] File name {filename} does not end with supported 3D file extensions: {SUPPORTED_3D_EXTENSIONS}").error.print()
+        else:
             mesh_file_path = ""
 
-        print(f"[Preview_3DMesh] Final mesh path: {mesh_file_path}")
-        print(f"[Preview_3DMesh] File exists: {os.path.exists(mesh_file_path) if mesh_file_path else False}")
+        # No extension/abspath validation left to do: this node now writes the
+        # only path it previews, so the checks that guarded a hand-typed string
+        # can no longer fail.
+        cstr(f"[{self.__class__.__name__}] preview -> {mesh_file_path or '(no mesh)'}").msg.print()
 
         previews = [
             {
@@ -1961,9 +1999,19 @@ class Load_Large_Multiview_Gaussian_Model:
     default_repo_id = "ashawkey/LGM"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory, derived on demand.
+
+        A method, not a `cls.checkpoints_dir_abs` assigned as an INPUT_TYPES
+        side effect: that only holds while the same node both defines and uses
+        it, and INPUT_TYPES may never have run in the process that loads the
+        model. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         if cls.default_ckpt_name not in all_models_names:
             all_models_names += [cls.default_ckpt_name]
             
@@ -1985,7 +2033,7 @@ class Load_Large_Multiview_Gaussian_Model:
     
     def load_LGM(self, model_name, lgb_config):
 
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
 
         def build(_config):
             model = LargeMultiviewGaussianModel(config_defaults[lgb_config])
@@ -2121,13 +2169,27 @@ class Load_TripoSR_Model:
     config_path = "TripoSR_config.yaml"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory, derived on demand.
+
+        A method, not a `cls.checkpoints_dir_abs` assigned as an INPUT_TYPES
+        side effect: that only holds while the same node both defines and uses
+        it, and INPUT_TYPES may never have run in the process that loads the
+        model. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_file(cls):
+        """Absolute path to the TripoSR config. Derived, not set in INPUT_TYPES."""
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         if cls.default_ckpt_name not in all_models_names:
             all_models_names += [cls.default_ckpt_name]
             
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "model_name": (all_models_names, ),
@@ -2146,12 +2208,12 @@ class Load_TripoSR_Model:
     
     def load_TSR(self, model_name, chunk_size):
         
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
 
         def build(_config):
             model = TSR.from_pretrained(
                 weight_path=ckpt_path,
-                config_path=self.config_path_abs
+                config_path=self.config_file()
             )
             model.renderer.set_chunk_size(chunk_size)
             return model
@@ -2223,13 +2285,27 @@ class Load_SF3D_Model:
     config_path = "StableFast3D_config.yaml"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory, derived on demand.
+
+        A method, not a `cls.checkpoints_dir_abs` assigned as an INPUT_TYPES
+        side effect: that only holds while the same node both defines and uses
+        it, and INPUT_TYPES may never have run in the process that loads the
+        model. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_file(cls):
+        """Absolute path to the StableFast3D config. Derived, not set in INPUT_TYPES."""
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         if cls.default_ckpt_name not in all_models_names:
             all_models_names += [cls.default_ckpt_name]
             
-        cls.config_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "model_name": (all_models_names, ),
@@ -2247,11 +2323,11 @@ class Load_SF3D_Model:
     
     def load_SF3D(self, model_name):
         
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
 
         def build(_config):
             model = SF3D.from_pretrained(
-                config_path=self.config_path_abs,
+                config_path=self.config_file(),
                 weight_path=ckpt_path
             )
             return model.eval()
@@ -2350,14 +2426,28 @@ class Load_CRM_MVDiffusion_Model:
     config_path = "CRM_configs"
     
     @classmethod
+    def ckpt_dir(cls):
+        """Absolute checkpoints directory, derived on demand.
+
+        A method, not a `cls.checkpoints_dir_abs` assigned as an INPUT_TYPES
+        side effect: that only holds while the same node both defines and uses
+        it, and INPUT_TYPES may never have run in the process that loads the
+        model. See Load_Hunyuan3D_V1.svrm_config().
+        """
+        return os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
+
+    @classmethod
+    def config_dir(cls):
+        """Absolute path to the CRM config directory. Derived, not set in INPUT_TYPES."""
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
+    @classmethod
     def INPUT_TYPES(cls):
-        cls.checkpoints_dir_abs = os.path.join(CKPT_ROOT_PATH, cls.checkpoints_dir)
-        all_models_names = get_list_filenames(cls.checkpoints_dir_abs, SUPPORTED_CHECKPOINTS_EXTENSIONS)
+        all_models_names = get_list_filenames(cls.ckpt_dir(), SUPPORTED_CHECKPOINTS_EXTENSIONS)
         for ckpt_name in cls.default_ckpt_name:
             if ckpt_name not in all_models_names:
                 all_models_names += [ckpt_name]
             
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
                 "model_name": (all_models_names, ),
@@ -2378,9 +2468,9 @@ class Load_CRM_MVDiffusion_Model:
         
         from .Gen_3D_Modules.CRM.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
 
-        crm_config_path = os.path.join(self.config_root_path_abs, crm_config_path)
+        crm_config_path = os.path.join(self.config_dir(), crm_config_path)
         
-        ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
+        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
             
         crm_config = OmegaConf.load(crm_config_path)
 
@@ -3384,14 +3474,56 @@ class Convert_Vertex_Color_To_Texture:
     CATEGORY = "Comfy3D/Algorithm"
     
     def run_convert_func(self, mesh, texture_resolution, batch_size):
-        
+
         mesh = _wire_in(mesh)
-        if mesh.vc is not None:
-            albedo_img, _ = interpolate_texture_map_attr(mesh, texture_resolution, batch_size, interpolate_color=True)
-            mesh.albedo = troch_image_dilate(albedo_img)
-        else:
-            cstr(f"[{self.__class__.__name__}] skip this node since there is no vertex color found in mesh").msg.print()
-        
+        name = self.__class__.__name__
+
+        if mesh.vc is None:
+            cstr(f"[{name}] skip this node since there is no vertex color found in mesh").msg.print()
+            return (_wire_out(mesh),)
+
+        # UV unwrap, when the mesh arrives without one, is xatlas -- single
+        # threaded, minutes on a dense mesh, and silent. Reconstruction output
+        # has no UVs, so this is the common path and worth announcing before it
+        # starts rather than explaining afterwards.
+        if mesh.vt is None:
+            cstr(f"[{name}] mesh has no UVs; unwrapping {len(mesh.f)} faces with xatlas "
+                 f"(no progress available, can take minutes)").msg.print()
+            t_uv = time.perf_counter()
+            mesh.auto_uv()
+            cstr(f"[{name}] UV unwrap done in {time.perf_counter() - t_uv:.1f}s").msg.print()
+
+        tiles_per_side = math.ceil((texture_resolution - 1) / batch_size)
+        cstr(f"[{name}] baking vertex color into a {texture_resolution}x{texture_resolution} "
+             f"texture over {tiles_per_side}x{tiles_per_side} tiles").msg.print()
+
+        pbar = _comfy_progress_bar(tiles_per_side ** 2)
+        t_bake = time.perf_counter()
+        state = {"next_log": 10}
+
+        def on_tile(done, total):
+            if pbar is not None:
+                pbar.update_absolute(done, total)
+            percent = done * 100 // total
+            # Throttled to ten lines: at 8192/128 this loop runs 4096 times and
+            # a line per tile would bury the rest of the run's log.
+            if percent >= state["next_log"] or done == total:
+                elapsed = time.perf_counter() - t_bake
+                rate = done / elapsed if elapsed > 0 else 0
+                eta = (total - done) / rate if rate > 0 else 0
+                cstr(f"[{name}] baking {percent}% ({done}/{total} tiles, "
+                     f"{elapsed:.1f}s elapsed, ~{eta:.0f}s left)").msg.print()
+                state["next_log"] = percent - percent % 10 + 10
+
+        albedo_img, _ = interpolate_texture_map_attr(
+            mesh, texture_resolution, batch_size, interpolate_color=True,
+            progress_callback=on_tile,
+        )
+
+        cstr(f"[{name}] dilating texture to bleed colour past UV seams").msg.print()
+        mesh.albedo = troch_image_dilate(albedo_img)
+        cstr(f"[{name}] done in {time.perf_counter() - t_bake:.1f}s").msg.print()
+
         return (_wire_out(mesh),)
     
 class Load_CharacterGen_MVDiffusion_Model:
@@ -4127,44 +4259,106 @@ class Hunyuan3D_V1_MVDiffusion_Model:
 
         return (multiview_image_grid, condition_image)
     
-class Load_Hunyuan3D_V1_Reconstruction_Model:
+class Load_Hunyuan3D_V1:
+    """Both halves of Hunyuan3D V1 from one variant choice.
 
-    # Announces in the UI that this node fetches weights if they are absent.
-    DISPLAY_NAME = "(Down)Load Hunyuan3D V1 Reconstruction Model"
+    V1 runs in two stages -- multi-view diffusion turns one image into six
+    views, then reconstruction turns those into a mesh -- and they were two
+    nodes with two independent widgets that HAD to agree:
 
-    checkpoints_dir = "svrm/svrm.safetensors"
-    default_repo_id = "tencent/Hunyuan3D-1"
+      * the diffusion loader picked a subfolder, mvd_lite or mvd_std
+      * the reconstruction loader had a `use_lite` boolean whose only effect
+        (views_to_mesh.py:46) is choosing the order the six views are read in,
+        [0,1,2,3,4,5] for lite against [0,2,4,5,3,1] for std
+
+    Nothing enforced the pairing, and a mismatch silently assigns views to the
+    wrong camera angles: a wrong mesh, no error. The shipped Hunyuan3D_V1.json
+    had exactly that -- an mvd_std branch with use_lite=True.
+
+    One widget now drives both, so the mismatch cannot be expressed.
+    """
+
+    DISPLAY_NAME = "(Down)Load Hunyuan3D V1"
+
+    _REPO_ID = "tencent/Hunyuan3D-1"
+    _SVRM = "svrm/svrm.safetensors"
     config_path = "Hunyuan3D_V1_svrm_config.yaml"
-    
+
+    # variant -> (subfolder, pipeline class name, use_lite view order)
+    _VARIANTS = {
+        "lite": ("mvd_lite", "Hunyuan3DMVDLitePipeline", True),
+        "std":  ("mvd_std",  "Hunyuan3DMVDStdPipeline",  False),
+    }
+
+    @classmethod
+    def svrm_config(cls):
+        """Absolute path to the reconstruction config.
+
+        A method, not an attribute set inside INPUT_TYPES. Thirty nodes in this
+        file set `cls.<x>_abs` as an INPUT_TYPES side effect, which holds only
+        while the same node both defines and uses it -- _build_hunyuan3d_v1_recon
+        runs from the *consumer* via resolve_diffusers_pipe, in a process where
+        this node's INPUT_TYPES may never have been called.
+        """
+        return os.path.join(CONFIG_ROOT_PATH, cls.config_path)
+
     @classmethod
     def INPUT_TYPES(cls):
-        cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
-                "use_lite": ("BOOLEAN", {"default": True}),
+                "variant": (list(cls._VARIANTS.keys()), {"default": "lite"}),
             },
         }
-    
-    RETURN_TYPES = (
-        "HUNYUAN3D_V1_RECONSTRUCTION_MODEL",
-    )
-    RETURN_NAMES = (
-        "hunyuan3d_v1_reconstruction_model",
-    )
-    FUNCTION = "load_model"
+
+    RETURN_TYPES = ("DIFFUSERS_PIPE", "HUNYUAN3D_V1_RECONSTRUCTION_MODEL")
+    RETURN_NAMES = ("mvdiffusion_pipe", "reconstruction_model")
+    FUNCTION = "load"
     CATEGORY = "Comfy3D/Import|Export"
-    
-    def load_model(self, use_lite):
-        # Download checkpoints
-        ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, self.default_repo_id)
-        download_repo(self.default_repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE)
-        # Load pre-trained models
-        mv23d_ckt_path = os.path.join(ckpt_download_dir, self.checkpoints_dir)
-        hunyuan3d_v1_reconstruction_model = Views2Mesh(self.config_root_path_abs, mv23d_ckt_path, DEVICE, use_lite=use_lite)
-        
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {mv23d_ckt_path}").msg.print()
-        return (hunyuan3d_v1_reconstruction_model,)
-    
+
+    @classmethod
+    def _ensure_weights(cls, variant):
+        """Fetch one variant plus the shared reconstruction weights.
+
+        Scoped: the repo is mvd_lite 5.58 GB + mvd_std 9.60 GB + svrm 0.92 GB,
+        and the old loader took all of it -- ~16 GB to use 6.5 GB, with the
+        unused variant unusable anyway.
+        """
+        subfolder, _cls_name, _lite = cls._VARIANTS[variant]
+        return download_repo(
+            cls._REPO_ID,
+            CKPT_DIFFUSERS_PATH, cls._REPO_ID,
+            ignore_patterns=HF_DOWNLOAD_IGNORE,
+            allow_patterns=[f"{subfolder}/**", "svrm/**"],
+            requires=[f"{subfolder}/model_index.json", cls._SVRM],
+        )
+
+    def load(self, variant):
+        self._ensure_weights(variant)
+        subfolder, pipeline_name, _lite = self._VARIANTS[variant]
+        return (
+            model_cache.recipe(
+                "diffusers_pipe",
+                pipeline_name=pipeline_name,
+                repo_id=self._REPO_ID,
+                checkpoint_sub_dir=subfolder,
+            ),
+            model_cache.recipe("hunyuan3d_v1_recon", variant=variant),
+        )
+
+
+@_pipe_builder("hunyuan3d_v1_recon")
+def _build_hunyuan3d_v1_recon(config):
+    """Materialize a hunyuan3d_v1_recon recipe. Only on a cache miss."""
+    cls = Load_Hunyuan3D_V1
+    variant = config["variant"]
+    _subfolder, _name, use_lite = cls._VARIANTS[variant]
+    base = cls._ensure_weights(variant)
+    ckpt = os.path.join(base, cls._SVRM)
+    model = Views2Mesh(cls.svrm_config(), ckpt, DEVICE, use_lite=use_lite)
+    cstr(f"[Load_Hunyuan3D_V1] loaded {variant} reconstruction ckpt from {ckpt}").msg.print()
+    return model
+
+
 class Hunyuan3D_V1_Reconstruction_Model:
     
     @classmethod
@@ -4191,6 +4385,10 @@ class Hunyuan3D_V1_Reconstruction_Model:
     
     @torch.no_grad()
     def run_model(self, hunyuan3d_v1_reconstruction_model, multiview_image_grid, condition_image, seed, target_face_count):
+        # May arrive as a recipe (Load_Hunyuan3D_V1) or, from an older graph, as
+        # a live Views2Mesh; the resolver passes the latter through untouched.
+        hunyuan3d_v1_reconstruction_model = resolve_diffusers_pipe(
+            hunyuan3d_v1_reconstruction_model)
         mv_grid_pil = torch_imgs_to_pils(multiview_image_grid)[0]
         condition_pil = torch_imgs_to_pils(condition_image)[0]
         
@@ -5711,7 +5909,7 @@ def _build_hunyuan3d_21_texgen(config):
     return pipeline
 
 class Hunyuan3D_21_ShapeGen:
-    """Hunyuan3D-2.1 Shape Generation with automatic pipeline cleanup"""
+    """Hunyuan3D-2.1 Shape Generation"""
     
     CATEGORY = "Comfy3D/Algorithm/Hunyuan3D-2.1"
     RETURN_TYPES = ("TRIMESH", "IMAGE")
@@ -5729,12 +5927,11 @@ class Hunyuan3D_21_ShapeGen:
                 "guidance_scale": ("FLOAT", {"default": 7.5, "min": 0.0, "step": 0.1}),
                 "octree_resolution": ("INT", {"default": 256, "min": 64, "max": 512}),
                 "remove_background": ("BOOLEAN", {"default": True}),
-                "auto_cleanup": ("BOOLEAN", {"default": True}),
             }
         }
 
     @torch.no_grad()
-    def generate(self, shapegen_pipe, image, seed, steps, guidance_scale, octree_resolution, remove_background, auto_cleanup):
+    def generate(self, shapegen_pipe, image, seed, steps, guidance_scale, octree_resolution, remove_background):
         # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
         # pipeline; resolve_diffusers_pipe passes the latter through.
         shapegen_pipe = resolve_diffusers_pipe(shapegen_pipe)
@@ -5764,23 +5961,17 @@ class Hunyuan3D_21_ShapeGen:
         mesh = face_reduce_worker(mesh)
         del face_reduce_worker
         
-        # Auto cleanup pipeline if enabled
-        if auto_cleanup:
-            try:
-                shapegen_pipe.to('cpu')
-                if hasattr(shapegen_pipe, 'unet'):
-                    del shapegen_pipe.unet
-                if hasattr(shapegen_pipe, 'vae'):
-                    del shapegen_pipe.vae
-                if hasattr(shapegen_pipe, 'scheduler'):
-                    del shapegen_pipe.scheduler
-                del outputs
-                torch.cuda.empty_cache()
-                gc.collect()
-                print("Shape pipeline cleaned up")
-            except Exception as e:
-                print(f"Error during pipeline cleanup: {e}")
-            
+        # No hand-rolled cleanup here. This used to tear `unet`, `vae` and
+        # `scheduler` off the pipeline after every run -- but that object is the
+        # one model_cache holds, so the next execution got a cache hit on a
+        # gutted pipeline and died at pipelines.py:741 reaching for
+        # self.scheduler. It worked exactly once per ComfyUI start.
+        #
+        # ComfyUI owns this VRAM now: the pipeline is registered with a
+        # ModelPatcher (see model_cache.managed), so unload_all_models() and
+        # ordinary eviction reclaim it without destroying the cached object.
+        del outputs
+
         mesh_out = Mesh.load_trimesh(given_mesh=mesh)
         mesh_out.auto_normal()
         
@@ -5957,158 +6148,11 @@ class Load_PartCrafter_Pipeline:
 def _build_partcrafter(config):
     """Materialize a partcrafter recipe. Called only on a cache miss."""
     base_dir = Load_PartCrafter_Pipeline._ensure_weights()
+    _alias_model_index_libraries(base_dir)
     pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
     print("PartCrafter pipeline loaded")
     return pipeline
 
-
-class PartCrafter_Generate:
-    """PartCrafter Generation - Creates multi-part 3D scenes with colored components"""
-    
-    CATEGORY = "Comfy3D/Algorithm/PartCrafter"
-    RETURN_TYPES = ("STRING", "STRING", "IMAGE")
-    RETURN_NAMES = ("parts_zip_path", "glb_mesh_path", "processed_image")
-    FUNCTION = "generate"
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "partcrafter_pipe": ("DIFFUSERS_PIPE",),
-                "image": ("IMAGE",),
-                "num_parts": ("INT", {"default": 4, "min": 1, "max": 16}),
-                "seed": ("INT", {"default": 1234, "min": 0, "max": 0xffffffffffffffff}),
-                "num_tokens": ("INT", {"default": 1024, "min": 256, "max": 2048}),
-                "num_inference_steps": ("INT", {"default": 50, "min": 1, "max": 100}),
-                "guidance_scale": ("FLOAT", {"default": 7.0, "min": 0.0, "step": 0.1}),
-                "max_num_expanded_coords": ("INT", {"default": 1000000000, "min": 1000, "max": 10000000000}),
-                "use_flash_decoder": ("BOOLEAN", {"default": False}),
-                "remove_background": ("BOOLEAN", {"default": True}),
-                "sampling_version": ("INT", {"default": 1, "min": 1, "max": 2}),
-            }
-        }
-
-    @torch.no_grad()
-    def generate(self, partcrafter_pipe, image, num_parts, seed, num_tokens, num_inference_steps, 
-                 guidance_scale, max_num_expanded_coords, use_flash_decoder, remove_background, sampling_version):
-        
-        # Convert image
-        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
-        # pipeline; resolve_diffusers_pipe passes the latter through.
-        partcrafter_pipe = resolve_diffusers_pipe(partcrafter_pipe)
-        pil_image = torch_imgs_to_pils(image)[0]
-        
-        # Remove background if needed
-        if remove_background:
-            rmbg_worker = BackgroundRemover_2_1()
-            if pil_image.mode == "RGBA":
-                pil_image = pil_image.convert('RGB')
-            pil_image = rmbg_worker(pil_image)
-            del rmbg_worker
-        
-        # Set sampling version
-        if hasattr(partcrafter_pipe.vae, 'set_sampling_version'):
-            partcrafter_pipe.vae.set_sampling_version(sampling_version)
-        
-        # Generation
-        generator = torch.Generator(device=partcrafter_pipe.device)
-        generator = generator.manual_seed(int(seed))
-        
-        outputs = partcrafter_pipe(
-            image=[pil_image] * num_parts,
-            attention_kwargs={"num_parts": num_parts},
-            num_tokens=num_tokens,
-            generator=generator,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            max_num_expanded_coords=max_num_expanded_coords,
-            use_flash_decoder=use_flash_decoder,
-        ).meshes
-        
-        # Ensure no None outputs 
-        for i, mesh in enumerate(outputs):
-            if mesh is None:
-                outputs[i] = trimesh.Trimesh(vertices=[[0,0,0]], faces=[[0,0,0]])
-                print(f"Replaced None mesh at index {i} with dummy mesh")
-        
-        merged_mesh_trimesh = get_colored_mesh_composition(outputs)
-        split_mesh = explode_mesh(merged_mesh_trimesh)
-        
-        # Debug logging
-        print(f"PartCrafter result type: {type(merged_mesh_trimesh)}")
-        if hasattr(merged_mesh_trimesh, 'geometry'):
-            print(f"Scene contains {len(merged_mesh_trimesh.geometry)} parts: {list(merged_mesh_trimesh.geometry.keys())}")
-        
-        # Create ZIP with individual parts
-        parts_output_dir = "output/partcrafter_parts"
-        os.makedirs(parts_output_dir, exist_ok=True)
-        
-        zip_path = os.path.join(parts_output_dir, f"parts.zip")
-        parts = []
-        
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for idx, mesh in enumerate(outputs):
-                print(f"Part {idx} type: {type(mesh)}")
-                if mesh is not None:
-                    # Save part as GLB file
-                    part_path = os.path.join(parts_output_dir, f"part_{idx:02d}.glb")
-                    mesh.export(part_path)
-                    parts.append(part_path)
-                    
-                    # Add to ZIP
-                    zipf.write(part_path, f"part_{idx:02d}.glb")
-                    
-                    # Clean up temporary file
-                    try:
-                        os.remove(part_path)
-                    except:
-                        pass
-        
-        print(f"Created parts ZIP: {zip_path} with {len(parts)} parts")
-        
-        # Save merged mesh 
-        scene_output_dir = "output/partcrafter_scenes"
-        os.makedirs(scene_output_dir, exist_ok=True)
-        scene_file_path = os.path.join(scene_output_dir, f"scene.glb")
-        
-        # For Preview_3DMesh, return relative path from ComfyUI output directory
-        relative_scene_path = "partcrafter_scenes/scene.glb"
-        
-        # Export the merged mesh (same as app.py: merged.export(merged_path))
-        merged_mesh_trimesh.export(scene_file_path)
-        print(f"Saved merged colored mesh to: {scene_file_path}")
-        
-        # Debug: check what was saved
-        if isinstance(merged_mesh_trimesh, trimesh.Scene):
-            print(f"Exported Scene with {len(merged_mesh_trimesh.geometry)} parts")
-            for geom_name in merged_mesh_trimesh.geometry:
-                geom = merged_mesh_trimesh.geometry[geom_name]
-                print(f"  Part {geom_name}: vertices: {len(geom.vertices)}, faces: {len(geom.faces)}")
-                if hasattr(geom.visual, 'vertex_colors') and geom.visual.vertex_colors is not None:
-                    print(f"    Has vertex colors: {geom.visual.vertex_colors.shape}")
-        else:
-            print(f"Exported single mesh: vertices: {len(merged_mesh_trimesh.vertices)}, faces: {len(merged_mesh_trimesh.faces)}")
-        
-        # Debug info about the scene
-        try:
-            print(f"Scene file saved successfully: {scene_file_path}")
-            if os.path.exists(scene_file_path):
-                file_size = os.path.getsize(scene_file_path) / (1024 * 1024)  # MB
-                print(f"Scene file size: {file_size:.2f} MB")
-                print(f"Relative path for Preview_3DMesh: {relative_scene_path}")
-            else:
-                print(f"Warning: Scene file was not created properly")
-        except Exception as e:
-            print(f"Error checking scene file: {e}")
-        
-        # Processed image
-        processed_image_tensor = pils_to_torch_imgs([pil_image])
-        
-        print(f"PartCrafter: Generated {len(outputs)} parts with explode_mesh processing")
-        print(f"GLB mesh path for Preview_3DMesh: {relative_scene_path}")
-        
-        return (zip_path, relative_scene_path, processed_image_tensor)
-#------ partcrafter scene ---------------------
 
 class Load_PartCrafter_Scene_Pipeline:
 
@@ -6155,6 +6199,7 @@ class Load_PartCrafter_Scene_Pipeline:
 def _build_partcrafter_scene(config):
     """Materialize a partcrafter_scene recipe. Only on a cache miss."""
     base_dir = Load_PartCrafter_Scene_Pipeline._ensure_weights()
+    _alias_model_index_libraries(base_dir)
     pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
     print("PartCrafter-Scene pipeline loaded")
     return pipeline
@@ -6164,8 +6209,10 @@ class PartCrafter_Generate:
     """PartCrafter Generation - Creates multi-part 3D scenes with colored components"""
     
     CATEGORY = "Comfy3D/Algorithm/PartCrafter"
-    RETURN_TYPES = ("STRING", "STRING", "IMAGE")
-    RETURN_NAMES = ("parts_zip_path", "glb_mesh_path", "processed_image")
+    # `mesh` is APPENDED, never inserted: slots 0-2 keep their indices, so the
+    # shipped workflow and every saved graph keep their links.
+    RETURN_TYPES = ("STRING", "STRING", "IMAGE", "TRIMESH")
+    RETURN_NAMES = ("parts_zip_path", "glb_mesh_path", "processed_image", "mesh")
     FUNCTION = "generate"
 
     @classmethod
@@ -6229,14 +6276,49 @@ class PartCrafter_Generate:
                 outputs[i] = trimesh.Trimesh(vertices=[[0,0,0]], faces=[[0,0,0]])
                 print(f"Replaced None mesh at index {i} with dummy mesh")
         
-        merged_mesh_trimesh = get_colored_mesh_composition(outputs)
-        split_mesh = explode_mesh(merged_mesh_trimesh)
+        # is_random=False: part k always gets RGB[k], so the colour IS a stable
+        # part id across runs. The default re-rolls random colours every run,
+        # which makes the one thing identifying a part unreproducible.
+        merged_mesh_trimesh = get_colored_mesh_composition(outputs, is_random=False)
+
+        # One mesh with disconnected components rather than a batch: parts are
+        # separate bodies of a single Trimesh, and the per-part colour survives
+        # concatenate. Ordering comes from dump() rather than `outputs` so the
+        # ids match the geometry actually concatenated.
+        parts_in_order = merged_mesh_trimesh.dump()
+        merged_mesh = trimesh.util.concatenate(parts_in_order)
+        # Exact membership alongside the colour. The palette holds 15 entries and
+        # num_parts goes to 16, so at the top setting two parts share a colour --
+        # part_id stays unique whatever the palette does.
+        merged_mesh.metadata["part_id"] = np.concatenate(
+            [np.full(len(part.faces), i, dtype=np.int32)
+             for i, part in enumerate(parts_in_order)]
+        ) if parts_in_order else np.zeros(0, dtype=np.int32)
+
+        # The palette rides in metadata too, so `part_id` + `part_colors`
+        # reconstructs the colouring exactly. Needed because serialization.py
+        # carries TextureVisuals only -- ColorVisuals vertex colours are a
+        # documented TODO there and are dropped crossing the worker boundary,
+        # which every node output does. metadata is mesh-lived, so it is not
+        # exposed to the id-reuse hazard that keeps the colour accessor out.
+        merged_mesh.metadata["part_colors"] = np.array(
+            [np.asarray(part.visual.vertex_colors[0][:3], dtype=np.uint8)
+             for part in parts_in_order], dtype=np.uint8
+        ) if parts_in_order else np.zeros((0, 3), dtype=np.uint8)
+
+        # Put the colours on the wire the way the pack expects: `vc` inside
+        # comfy3d_extras, which _wire_in feeds straight into Mesh.vc, and which
+        # write_glb now emits as COLOR_0. Going through visual.vertex_colors
+        # instead loses them -- serialization.py carries TextureVisuals only.
+        # .astype() copies, so no torch tensor ever aliases a TrackedArray.
+        vertex_colors = np.asarray(merged_mesh.visual.vertex_colors)
+        merged_mesh.metadata[_MESH_EXTRAS_KEY] = {
+            "vc": torch.from_numpy(
+                vertex_colors[:, :3].astype(np.float32) / 255.0
+            )
+        }
         
         # Debug logging
-        print(f"PartCrafter result type: {type(merged_mesh_trimesh)}")
-        if hasattr(merged_mesh_trimesh, 'geometry'):
-            print(f"Scene contains {len(merged_mesh_trimesh.geometry)} parts: {list(merged_mesh_trimesh.geometry.keys())}")
-        
         # Create ZIP with individual parts
         parts_output_dir = "output/partcrafter_parts"
         os.makedirs(parts_output_dir, exist_ok=True)
@@ -6246,7 +6328,6 @@ class PartCrafter_Generate:
         
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for idx, mesh in enumerate(outputs):
-                print(f"Part {idx} type: {type(mesh)}")
                 if mesh is not None:
                     # Save part as GLB file
                     part_path = os.path.join(parts_output_dir, f"part_{idx:02d}.glb")
@@ -6274,36 +6355,15 @@ class PartCrafter_Generate:
         
         # Export the merged mesh (same as app.py: merged.export(merged_path))
         merged_mesh_trimesh.export(scene_file_path)
-        print(f"Saved merged colored mesh to: {scene_file_path}")
-        
-        # Debug: check what was saved
-        if isinstance(merged_mesh_trimesh, trimesh.Scene):
-            print(f"Exported Scene with {len(merged_mesh_trimesh.geometry)} parts")
-            for geom_name in merged_mesh_trimesh.geometry:
-                geom = merged_mesh_trimesh.geometry[geom_name]
-                print(f"  Part {geom_name}: vertices: {len(geom.vertices)}, faces: {len(geom.faces)}")
-                if hasattr(geom.visual, 'vertex_colors') and geom.visual.vertex_colors is not None:
-                    print(f"    Has vertex colors: {geom.visual.vertex_colors.shape}")
-        else:
-            print(f"Exported single mesh: vertices: {len(merged_mesh_trimesh.vertices)}, faces: {len(merged_mesh_trimesh.faces)}")
-        
-        # Debug info about the scene
-        try:
-            print(f"Scene file saved successfully: {scene_file_path}")
-            if os.path.exists(scene_file_path):
-                file_size = os.path.getsize(scene_file_path) / (1024 * 1024)  # MB
-                print(f"Scene file size: {file_size:.2f} MB")
-                print(f"Relative path for Preview_3DMesh: {relative_scene_path}")
-            else:
-                print(f"Warning: Scene file was not created properly")
-        except Exception as e:
-            print(f"Error checking scene file: {e}")
-        
+        cstr(f"[PartCrafter_Generate] wrote {scene_file_path}").msg.print()
+
         # Processed image
         processed_image_tensor = pils_to_torch_imgs([pil_image])
         
-        print(f"PartCrafter: Generated {len(outputs)} parts with explode_mesh processing")
-        print(f"GLB mesh path for Preview_3DMesh: {relative_scene_path}")
-        
-        return (zip_path, relative_scene_path, processed_image_tensor)
+        cstr(f"[PartCrafter_Generate] {len(parts_in_order)} parts -> one mesh, "
+             f"{merged_mesh.body_count} disconnected bodies, "
+             f"{len(merged_mesh.faces)} faces").msg.print()
+
+        return (zip_path, relative_scene_path, processed_image_tensor,
+                _wire_out(merged_mesh))
 
