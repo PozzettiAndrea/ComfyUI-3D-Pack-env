@@ -29,6 +29,7 @@ def reconstruct_stage1(pils: List[Image.Image], steps=100, vertices=None, faces=
 
     mask = target_images[..., -1] < 0.5
 
+    import comfy.model_management
     comfy_pbar = comfy.utils.ProgressBar(steps)
 
     for i in tqdm(range(steps)):
@@ -54,6 +55,9 @@ def reconstruct_stage1(pils: List[Image.Image], steps=100, vertices=None, faces=
 
         vertices,faces = opt.remesh(poisson=False)
 
+        # Let the ComfyUI stop button work: without this the loop runs
+        # to completion no matter what the UI says.
+        comfy.model_management.throw_exception_if_processing_interrupted()
         comfy_pbar.update_absolute(i + 1)
 
     vertices, faces = vertices.detach(), faces.detach()

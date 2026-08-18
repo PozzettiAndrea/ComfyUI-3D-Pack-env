@@ -468,6 +468,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         if camera_matrixs is not None:
             camera_matrixs = torch.cat([camera_matrixs] * 2) if do_classifier_free_guidance else camera_matrixs #(64, 4, 12)
         # Denoising loop
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
         
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -574,6 +575,9 @@ class TuneAVideoPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
                         
+                # Let the ComfyUI stop button work: without this the loop runs
+                # to completion no matter what the UI says.
+                comfy.model_management.throw_exception_if_processing_interrupted()
                 comfy_pbar.update_absolute(i + 1)
 
         # Post-processing

@@ -312,6 +312,7 @@ def bake_texture(
     projections = [utils3d.torch.intrinsics_to_perspective(torch.tensor(intr).cuda(), near, far) for intr in intrinsics]
 
     steps = len(views)
+    import comfy.model_management
     comfy_pbar = comfy.utils.ProgressBar(steps)
     
     if mode == 'fast':
@@ -334,6 +335,9 @@ def bake_texture(
             texture = texture.scatter_add(0, idx.view(-1, 1).expand(-1, 3), obs)
             texture_weights = texture_weights.scatter_add(0, idx, torch.ones((obs.shape[0]), dtype=torch.float32, device=texture.device))
 
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)
 
         mask = texture_weights > 0

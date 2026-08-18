@@ -169,6 +169,7 @@ class InstantNGP(nn.Module):
         
         ref_imgs_num_minus_1 = self.ref_imgs_num-1
         
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(iters)
         pbar = tqdm.trange(iters)
         for step in pbar:
@@ -198,6 +199,9 @@ class InstantNGP(nn.Module):
             optimizer.zero_grad()
 
             pbar.set_description(f"NeRF Fitting Loss = {loss_mse.item():.6f}")
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(step + 1)
             
         torch.cuda.synchronize()

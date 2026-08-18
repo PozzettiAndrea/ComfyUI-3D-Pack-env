@@ -396,6 +396,7 @@ class HunYuan3D_MVD_Std_Pipeline(diffusers.DiffusionPipeline):
         if guidance_curve is None:
             guidance_curve = lambda t: guidance_scale
         
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -443,6 +444,9 @@ class HunYuan3D_MVD_Std_Pipeline(diffusers.DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     
+                # Let the ComfyUI stop button work: without this the loop runs
+                # to completion no matter what the UI says.
+                comfy.model_management.throw_exception_if_processing_interrupted()
                 comfy_pbar.update_absolute(i + 1)
         
         latents = unscale_latents(latents)

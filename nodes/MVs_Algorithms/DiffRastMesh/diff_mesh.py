@@ -89,6 +89,7 @@ class DiffMesh:
             
         ref_imgs_num_minus_1 = self.ref_imgs_num-1
         
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(self.training_iterations)
 
         for step in tqdm.trange(self.training_iterations):
@@ -145,6 +146,9 @@ class DiffMesh:
             self.optimizer.step()
             self.optimizer.zero_grad()
             
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(step + 1)
             
         torch.cuda.synchronize()

@@ -111,12 +111,16 @@ class FlowEulerSampler(Sampler):
         t_seq = rescale_t * t_seq / (1 + (rescale_t - 1) * t_seq)
         t_pairs = list((t_seq[i], t_seq[i + 1]) for i in range(steps))
         ret = edict({"samples": None, "pred_x_t": [], "pred_x_0": []})
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(steps)
         for i, (t, t_prev) in enumerate(tqdm(t_pairs, desc="Sampling", disable=not verbose)):
             out = self.sample_once(model, sample, t, t_prev, cond, **kwargs)
             sample = out.pred_x_prev
             ret.pred_x_t.append(out.pred_x_prev)
             ret.pred_x_0.append(out.pred_x_0)
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)   
 
         ret.samples = sample

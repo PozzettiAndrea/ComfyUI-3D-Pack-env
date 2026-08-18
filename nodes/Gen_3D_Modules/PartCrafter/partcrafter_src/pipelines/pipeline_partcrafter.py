@@ -248,6 +248,13 @@ class PartCrafterPipeline(DiffusionPipeline, TransformerDiffusionMixin):
             ncols=125,
             disable=self._progress_bar_config['disable'] if hasattr(self, '_progress_bar_config') else False,
         )
+        # Not callback_on_step_end: that branch below reads image_embeds_1,
+        # which __call__ never binds, so passing any callback raises
+        # UnboundLocalError. Mirror into ComfyUI's bar from the loop instead,
+        # as the other vendored pipelines here do.
+        import comfy.utils
+        import comfy.model_management
+        comfy_pbar = comfy.utils.ProgressBar(len(timesteps))
         with self.progress_bar(total=len(timesteps)) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -313,6 +320,10 @@ class PartCrafterPipeline(DiffusionPipeline, TransformerDiffusionMixin):
                     (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
                 ):
                     progress_bar.update()
+                    # Let the ComfyUI stop button work: without this the loop runs
+                    # to completion no matter what the UI says.
+                    comfy.model_management.throw_exception_if_processing_interrupted()
+                    comfy_pbar.update(1)
 
 
         # 7. decoder mesh
@@ -323,6 +334,8 @@ class PartCrafterPipeline(DiffusionPipeline, TransformerDiffusionMixin):
             ncols=125,
             disable=self._progress_bar_config['disable'] if hasattr(self, '_progress_bar_config') else False,
         )
+        import comfy.model_management
+        comfy_pbar = comfy.utils.ProgressBar(batch_size)
         with self.progress_bar(total=batch_size) as progress_bar:
             for i in range(batch_size):
                 geometric_func = lambda x: self.vae.decode(latents[i].unsqueeze(0), sampled_points=x).sample
@@ -344,6 +357,10 @@ class PartCrafterPipeline(DiffusionPipeline, TransformerDiffusionMixin):
                 output.append(mesh_v_f)
                 meshes.append(mesh)
                 progress_bar.update()
+                # Let the ComfyUI stop button work: without this the loop runs
+                # to completion no matter what the UI says.
+                comfy.model_management.throw_exception_if_processing_interrupted()
+                comfy_pbar.update(1)
        
         # Offload all models
         self.maybe_free_model_hooks()

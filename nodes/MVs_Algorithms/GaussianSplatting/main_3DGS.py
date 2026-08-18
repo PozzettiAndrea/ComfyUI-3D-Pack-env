@@ -137,6 +137,7 @@ class GaussianSplatting3D:
             
         ref_imgs_num_minus_1 = self.ref_imgs_num-1
         
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(self.gs_params.training_iterations)
 
         for step in tqdm.trange(self.gs_params.training_iterations):
@@ -223,6 +224,9 @@ class GaussianSplatting3D:
                 if step % self.gs_params.opacity_reset_interval == 0:
                     self.renderer.gaussians.reset_opacity()
                     
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(step + 1)
 
         ender.record()

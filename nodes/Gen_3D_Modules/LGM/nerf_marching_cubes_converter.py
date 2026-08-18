@@ -167,6 +167,7 @@ class GSConverterNeRFMarchingCubes(nn.Module):
         print(f"[INFO] fitting nerf...")
         imgs, alphas = [], []
         
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(iters)
         pbar = tqdm.trange(iters)
         for i in pbar:
@@ -195,6 +196,9 @@ class GSConverterNeRFMarchingCubes(nn.Module):
             optimizer.zero_grad()
 
             pbar.set_description(f"MSE = {loss_mse.item():.6f}")
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)
         
         print(f"[INFO] finished fitting nerf!")
@@ -262,6 +266,7 @@ class GSConverterNeRFMarchingCubes(nn.Module):
         ])
 
         print(f"[INFO] fitting mesh...")
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(iters)
         pbar = tqdm.trange(iters)
         for i in pbar:
@@ -304,6 +309,9 @@ class GSConverterNeRFMarchingCubes(nn.Module):
                 ])
 
             pbar.set_description(f"MSE = {loss_mse.item():.6f}")
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)
         
         # last clean
@@ -344,6 +352,7 @@ class GSConverterNeRFMarchingCubes(nn.Module):
         ])
 
         print(f"[INFO] fitting mesh texture...")
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(iters)
         pbar = tqdm.trange(iters)
         for i in pbar:
@@ -367,6 +376,9 @@ class GSConverterNeRFMarchingCubes(nn.Module):
             optimizer.zero_grad()
 
             pbar.set_description(f"MSE = {loss_mse.item():.6f}")
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)
         
         print(f"[INFO] finished fitting mesh texture!")

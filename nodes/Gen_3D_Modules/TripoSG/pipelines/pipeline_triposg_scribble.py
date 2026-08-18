@@ -258,6 +258,7 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
         )
 
         # 6. Denoising loop
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -312,6 +313,9 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
                 ):
                     progress_bar.update()
                     
+                # Let the ComfyUI stop button work: without this the loop runs
+                # to completion no matter what the UI says.
+                comfy.model_management.throw_exception_if_processing_interrupted()
                 comfy_pbar.update_absolute(i + 1)
 
         # 7. decoder mesh

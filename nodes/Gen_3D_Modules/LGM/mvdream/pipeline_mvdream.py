@@ -503,6 +503,7 @@ class MVDreamPipeline(DiffusionPipeline):
 
         # Denoising loop
         timesteps_len = len(timesteps)
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(timesteps_len)
         
         num_warmup_steps = timesteps_len - num_inference_steps * self.scheduler.order
@@ -548,6 +549,9 @@ class MVDreamPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)  # type: ignore
                             
+                # Let the ComfyUI stop button work: without this the loop runs
+                # to completion no matter what the UI says.
+                comfy.model_management.throw_exception_if_processing_interrupted()
                 comfy_pbar.update_absolute(i + 1)
 
         # Post-processing

@@ -572,6 +572,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         eles, focals = [], []
         # 8. Denoising loop
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
         for i, t in enumerate(self.progress_bar(timesteps)):
             if do_classifier_free_guidance:
@@ -616,6 +617,9 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)
 
         # 9. Post-processing

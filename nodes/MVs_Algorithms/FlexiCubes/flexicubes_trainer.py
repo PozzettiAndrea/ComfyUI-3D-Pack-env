@@ -113,6 +113,7 @@ class FlexiCubesTrainer:
         ender = torch.cuda.Event(enable_timing=True)
         starter.record()
         
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(self.training_iterations)
         
         if self.ref_normal_imgs_torch is not None:
@@ -161,6 +162,9 @@ class FlexiCubesTrainer:
             self.scheduler.step()
             self.optimizer.zero_grad()
             
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(step + 1)
             
             #self.test_save(step, mv, mvp, grid_verts, total_loss, out_dir="C:\\Users\\reall\\Softwares\\ComfyUI_windows_portable\\ComfyUI\\output\\FlexiCubes_Output\\Test_Normals")

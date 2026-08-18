@@ -225,6 +225,7 @@ class DDIMSampler(object):
         )
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
         iterator = tqdm(time_range, desc="DDIM Sampler", total=total_steps)
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(total_steps)
         
         for i, step in enumerate(iterator):
@@ -266,6 +267,9 @@ class DDIMSampler(object):
                 intermediates["pred_x0"].extend(pred_x0)
                 intermediates["e_t"].extend(e_t)
                 
+            # Let the ComfyUI stop button work: without this the loop runs
+            # to completion no matter what the UI says.
+            comfy.model_management.throw_exception_if_processing_interrupted()
             comfy_pbar.update_absolute(i + 1)
 
         return img, intermediates

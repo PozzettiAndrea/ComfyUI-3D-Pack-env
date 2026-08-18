@@ -89,6 +89,7 @@ def ddim_sample(ddim_scheduler: DDIMScheduler,
     }
 
     # reverse
+    import comfy.model_management
     comfy_pbar = comfy.utils.ProgressBar(steps)
     for i, t in enumerate(tqdm(timesteps, disable=disable_prog, desc="DDIM Sampling:", leave=False)):
         # expand the latents if we are doing classifier free guidance
@@ -114,6 +115,9 @@ def ddim_sample(ddim_scheduler: DDIMScheduler,
             noise_pred, t, latents, **extra_step_kwargs
         ).prev_sample
         
+        # Let the ComfyUI stop button work: without this the loop runs
+        # to completion no matter what the UI says.
+        comfy.model_management.throw_exception_if_processing_interrupted()
         comfy_pbar.update_absolute(i + 1)
 
         yield latents, t

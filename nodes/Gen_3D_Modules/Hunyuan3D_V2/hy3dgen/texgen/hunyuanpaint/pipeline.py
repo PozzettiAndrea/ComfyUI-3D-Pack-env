@@ -642,6 +642,7 @@ class HunyuanPaintPipeline(StableDiffusionPipeline):
         # UI never sees. Mirror it into ComfyUI's bar, as the other ten
         # vendored pipelines in this pack already do.
         import comfy.utils
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -698,6 +699,9 @@ class HunyuanPaintPipeline(StableDiffusionPipeline):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+                    # Let the ComfyUI stop button work: without this the loop runs
+                    # to completion no matter what the UI says.
+                    comfy.model_management.throw_exception_if_processing_interrupted()
                     comfy_pbar.update(1)
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)

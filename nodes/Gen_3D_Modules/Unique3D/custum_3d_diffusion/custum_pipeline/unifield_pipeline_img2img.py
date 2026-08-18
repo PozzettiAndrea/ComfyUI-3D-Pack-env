@@ -237,6 +237,7 @@ class StableDiffusionImageCustomPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
+        import comfy.model_management
         comfy_pbar = comfy.utils.ProgressBar(num_inference_steps)
 
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -270,6 +271,9 @@ class StableDiffusionImageCustomPipeline(
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
+                # Let the ComfyUI stop button work: without this the loop runs
+                # to completion no matter what the UI says.
+                comfy.model_management.throw_exception_if_processing_interrupted()
                 comfy_pbar.update_absolute(i + 1)
 
         self.maybe_free_model_hooks()
