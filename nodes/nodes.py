@@ -39,7 +39,7 @@ from PIL import Image
 from . import model_cache
 from .mesh_processer.interop import wire_in as _wire_in, wire_out as _wire_out
 from .shared_utils.model_downloader import (
-    get_model_dir, download_file, download_repo, download_url,
+    get_model_dir, download_file, download_files, download_repo, download_url,
 )
 from .mesh_processer.mesh import Mesh
 from .mesh_processer.mesh_utils import (
@@ -209,7 +209,22 @@ WEIGHT_DTYPE = torch.float16
 DEVICE_STR = "cuda" if torch.cuda.is_available() else "cpu"
 DEVICE = torch.device(DEVICE_STR)
 
-HF_DOWNLOAD_IGNORE = ["*.yaml", "*.json", "*.py", ".png", ".jpg", ".gif"]
+# Excluded from every snapshot_download. The config/code entries are the point:
+# *.yaml/*.json/*.py are pinned in git under model_configs/ and reviewed there,
+# so a download must not overwrite them with whatever upstream currently serves.
+#
+# The image entries used to read ".png"/".jpg"/".gif" -- snapshot_download
+# matches with fnmatch, so those only ever matched a file *named* ".png", and
+# every sample image in every repo was being fetched.
+#
+# .gitattributes is HuggingFace's LFS config for their repo. Landing it in this
+# tree tells git to LFS-ify every *.ckpt/*.safetensors/*.bin underneath it,
+# which is exactly where downloaded weights go.
+HF_DOWNLOAD_IGNORE = [
+    "*.yaml", "*.json", "*.py",
+    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp",
+    ".gitattributes",
+]
 
 
 class Preview_3DGS:
@@ -4463,11 +4478,18 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
     def _ensure_weights(repo: str, subfolder: str, use_safetensors: bool):
         cls = Load_Hunyuan3D_V2_ShapeGen_Pipeline
         ckpt_file = "model.fp16.safetensors" if use_safetensors else "model.fp16.ckpt"
-        download_repo(
+        # One named file, not a repo snapshot. _build_pipe below calls
+        # from_single_file, and config.yaml is pinned in git in this same
+        # directory -- so nothing else from the repo is ever read.
+        #
+        # This used to be download_repo() with only `requires`, and `requires`
+        # decides *whether* to fetch, not *what*: it took all of
+        # tencent/Hunyuan3D-2, which is 74.89 GB across nine model variants,
+        # to use 4.93 GB of it. download_files skips the repo listing walk too.
+        download_files(
             f"{cls._REPO_ID_BASE}/{repo}",
+            [f"{subfolder}/{ckpt_file}"],
             CKPT_DIFFUSERS_PATH, f"{cls._REPO_ID_BASE}/{repo}",
-            ignore_patterns=HF_DOWNLOAD_IGNORE,
-            requires=[f"{subfolder}/{ckpt_file}"],
         )
 
     @staticmethod
@@ -4483,8 +4505,8 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         pipe = Hunyuan3DDiTFlowMatchingPipeline.from_single_file(
             ckpt_path=ckpt,
             config_path=cfg,
-            device="cuda",
-            dtype=torch.float16,
+            device=DEVICE,
+            dtype=WEIGHT_DTYPE,
             use_safetensors=use_safetensors,
             from_pretrained_kwargs={
                 "model_path": f"{Load_Hunyuan3D_V2_ShapeGen_Pipeline._REPO_ID_BASE}/{repo}",
@@ -4496,7 +4518,7 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         if flash_vdm and any(tag in subfolder for tag in ("turbo", "fast")):
             pipe.enable_flashvdm(replace_vae=False)
 
-        return pipe.to("cuda", torch.float16)
+        return pipe.to(DEVICE, WEIGHT_DTYPE)
 
     def load(self, generation_mode, weights_format, flash_vdm):
         repo, subfolder, def_steps = self._MODES[generation_mode]

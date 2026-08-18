@@ -170,3 +170,8 @@ _Pre_Builds/_Build_Wheels
 _Pre_Builds/_Libs
 
 .idea
+
+# HuggingFace repo metadata that snapshot_download drops into model_configs/.
+# .gitattributes carries HF's LFS rules (*.ckpt, *.safetensors, *.bin), which
+# would apply to downloaded weights landing in that same tree.
+nodes/model_configs/**/.gitattributes
