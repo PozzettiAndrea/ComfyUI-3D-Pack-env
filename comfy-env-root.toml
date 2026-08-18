@@ -2,5 +2,5 @@
 TRIMESH = "custom"
 
 [node_reqs]
-ComfyUI-KJNodes = "PozzettiAndrea/ComfyUI-KJNodes"
+ComfyUI-KJNodes = "kijai/ComfyUI-KJNodes"
 ComfyUI-VideoHelperSuite = "Kosinkadink/ComfyUI-VideoHelperSuite"
