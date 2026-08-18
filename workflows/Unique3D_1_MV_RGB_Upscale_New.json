@@ -503,7 +503,7 @@
     },
     {
       "id": 226,
-      "type": "ImpactFloat",
+      "type": "PrimitiveFloat",
       "pos": [
         4545,
         -247
@@ -528,7 +528,7 @@
       ],
       "title": "Upscale Value [Var]",
       "properties": {
-        "Node name for S&R": "ImpactFloat"
+        "Node name for S&R": "PrimitiveFloat"
       },
       "widgets_values": [
         4
@@ -1025,7 +1025,7 @@
     },
     {
       "id": 224,
-      "type": "ImpactFloat",
+      "type": "PrimitiveFloat",
       "pos": [
         4510,
         -360
@@ -1050,7 +1050,7 @@
       ],
       "title": "CFG Value [Var]",
       "properties": {
-        "Node name for S&R": "ImpactFloat"
+        "Node name for S&R": "PrimitiveFloat"
       },
       "widgets_values": [
         5
@@ -1058,7 +1058,7 @@
     },
     {
       "id": 227,
-      "type": "ImpactFloat",
+      "type": "PrimitiveFloat",
       "pos": [
         4584,
         -131
@@ -1083,7 +1083,7 @@
       ],
       "title": "Denoise Value [Var]",
       "properties": {
-        "Node name for S&R": "ImpactFloat"
+        "Node name for S&R": "PrimitiveFloat"
       },
       "widgets_values": [
         0.2

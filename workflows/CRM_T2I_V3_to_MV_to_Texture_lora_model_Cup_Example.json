@@ -742,7 +742,7 @@
     },
     {
       "id": 127,
-      "type": "ConvertToGrayscale",
+      "type": "[Comfy3D] Convert Image To Grayscale",
       "pos": {
         "0": 4263,
         "1": 556
@@ -763,7 +763,7 @@
       ],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
             207,
@@ -774,7 +774,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "ConvertToGrayscale"
+        "Node name for S&R": "[Comfy3D] Convert Image To Grayscale"
       }
     },
     {
@@ -831,7 +831,7 @@
     },
     {
       "id": 126,
-      "type": "ConvertToGrayscale",
+      "type": "[Comfy3D] Convert Image To Grayscale",
       "pos": {
         "0": 4266,
         "1": 300
@@ -852,7 +852,7 @@
       ],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
             205,
@@ -864,7 +864,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "ConvertToGrayscale"
+        "Node name for S&R": "[Comfy3D] Convert Image To Grayscale"
       }
     },
     {

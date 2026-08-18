@@ -270,49 +270,14 @@
           "type": "IMAGE",
           "links": [
             49,
-            74
+            74,
+            75
           ],
           "slot_index": 0
         }
       ],
       "properties": {
         "Node name for S&R": "VAEDecode"
-      }
-    },
-    {
-      "id": 39,
-      "type": "ImageListToImageBatch",
-      "pos": [
-        1584,
-        491
-      ],
-      "size": {
-        "0": 210,
-        "1": 26
-      },
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 74
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            75
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageListToImageBatch"
       }
     },
     {
@@ -571,16 +536,8 @@
       "LATENT"
     ],
     [
-      74,
-      8,
-      0,
-      39,
-      0,
-      "IMAGE"
-    ],
-    [
       75,
-      39,
+      8,
       0,
       38,
       0,

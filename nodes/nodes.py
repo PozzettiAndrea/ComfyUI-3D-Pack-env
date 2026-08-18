@@ -5255,6 +5255,195 @@ class Hunyuan3D_V2_Paint_Model_Turbo_MV:
         m_out.auto_normal()
         return (_wire_out(m_out),)
 
+class Remove_Image_Background:
+    """rembg background removal, matching the widget set the shipped workflows use.
+
+    Reimplemented, not copied: five workflows call WAS Node Suite's
+    `Image Rembg (Remove Background)`, and every pack these graphs depend on is
+    GPL-3.0 while this one is MIT. rembg is already in this env (the Hunyuan3D
+    families use it), so this is a wrapper over the same library WAS wraps.
+
+    Widget order deliberately mirrors WAS's so a swapped node keeps its
+    positional widgets_values from an existing graph.
+    """
+
+    CATEGORY = "Comfy3D/Preprocessors"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "remove_background"
+
+    _MODELS = ["u2net", "u2netp", "u2net_human_seg", "silueta",
+               "isnet-general-use", "isnet-anime"]
+    _BG_COLORS = {
+        "none":    None,
+        "black":   (0, 0, 0, 255),
+        "white":   (255, 255, 255, 255),
+        "magenta": (255, 0, 255, 255),
+    }
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "transparency": ("BOOLEAN", {"default": True}),
+                "model": (cls._MODELS,),
+                "post_processing": ("BOOLEAN", {"default": False}),
+                "only_mask": ("BOOLEAN", {"default": False}),
+                "alpha_matting": ("BOOLEAN", {"default": False}),
+                "alpha_matting_foreground_threshold": ("INT", {"default": 240, "min": 0, "max": 255}),
+                "alpha_matting_background_threshold": ("INT", {"default": 10, "min": 0, "max": 255}),
+                "alpha_matting_erode_size": ("INT", {"default": 10, "min": 0, "max": 64}),
+                "background_color": (list(cls._BG_COLORS),),
+            },
+        }
+
+    @torch.no_grad()
+    def remove_background(self, images, transparency, model, post_processing, only_mask,
+                          alpha_matting, alpha_matting_foreground_threshold,
+                          alpha_matting_background_threshold, alpha_matting_erode_size,
+                          background_color):
+        from rembg import new_session, remove
+
+        session = new_session(model)
+        bgcolor = self._BG_COLORS[background_color]
+        # A background colour and transparency are mutually exclusive: compositing
+        # onto a colour is what removes the alpha. WAS lets both be set; the
+        # colour wins there too, so keep that rather than surprising a graph.
+        keep_alpha = transparency and bgcolor is None
+
+        out = []
+        for pil_img in torch_imgs_to_pils(images):
+            result = remove(
+                pil_img.convert("RGBA" if keep_alpha else "RGB"),
+                session=session,
+                alpha_matting=alpha_matting,
+                alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
+                alpha_matting_background_threshold=alpha_matting_background_threshold,
+                alpha_matting_erode_size=alpha_matting_erode_size,
+                only_mask=only_mask,
+                post_process_mask=post_processing,
+                bgcolor=bgcolor,
+            )
+            if only_mask:
+                result = result.convert("L").convert("RGB")
+            elif not keep_alpha:
+                result = result.convert("RGB")
+            out.append(result)
+
+        return (pils_to_torch_imgs(out),)
+
+
+class Pad_Image:
+    """Pad one side of an image with a border matching that edge's mean colour.
+
+    Reimplemented behaviour of Eden.art's `Eden_IMG_padder`, used by two
+    CharacterGen workflows. That repo declares no license, so its code cannot be
+    copied into this MIT pack -- but "extend one edge by a fraction of the image
+    and fill with the edge's average colour" is a description, not an
+    implementation.
+
+    The fill is a single scalar averaged over the edge strip AND all channels,
+    which is what upstream does -- so the border is grey-ish rather than tinted.
+    A per-channel mean would look better; it is deliberately not done here so a
+    shipped workflow renders as its author intended.
+    """
+
+    CATEGORY = "Comfy3D/Preprocessors"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "pad"
+
+    _EDGE_PIXELS = 4  # strip depth the fill colour is averaged over
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "pad_fraction": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "pad_location": (["bottom", "top", "left", "right"],),
+            },
+        }
+
+    @torch.no_grad()
+    def pad(self, image, pad_fraction, pad_location):
+        bs, h, w, c = image.shape
+        n = self._EDGE_PIXELS
+
+        if pad_location in ("top", "bottom"):
+            pad_px = int(h * pad_fraction)
+            strip = image[:, :n, :, :] if pad_location == "top" else image[:, -n:, :, :]
+            shape, dim = (bs, pad_px, w, c), 1
+        else:
+            pad_px = int(w * pad_fraction)
+            strip = image[:, :, :n, :] if pad_location == "left" else image[:, :, -n:, :]
+            shape, dim = (bs, h, pad_px, c), 2
+
+        if pad_px <= 0:
+            return (image,)
+
+        border = torch.full(shape, float(strip.mean()),
+                            dtype=image.dtype, device=image.device)
+        parts = (border, image) if pad_location in ("top", "left") else (image, border)
+        return (torch.cat(parts, dim=dim),)
+
+
+class Convert_Image_To_Grayscale:
+    """RGB/RGBA -> grayscale, keeping 3 channels.
+
+    Vendored in behaviour, NOT in code. Two shipped CRM_T2I_V3 texture
+    workflows call Eden.art's `ConvertToGrayscale`, and that repo declares no
+    license -- so its source cannot be copied into this MIT pack. The operation
+    itself is ITU-R BT.601 luma plus alpha compositing, which is a standard
+    formula and reimplemented here from scratch.
+
+    Node type differs from Eden's, so a graph referencing theirs must be
+    repointed at this one; installing both is harmless.
+    """
+
+    CATEGORY = "Comfy3D/Preprocessors"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "convert"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                # Luma to composite transparent pixels onto: 0 = black, 1 = white.
+                "alpha_channel_convert_to": ("FLOAT", {"default": 0.0, "min": 0.0,
+                                                       "max": 1.0, "step": 0.01}),
+            },
+        }
+
+    @torch.no_grad()
+    def convert(self, image, alpha_channel_convert_to):
+        channels = image.shape[-1]
+        if channels == 1:
+            return (image,)
+        if channels not in (3, 4):
+            raise ValueError(
+                f"[{self.__class__.__name__}] expected 1, 3 or 4 channels, got "
+                f"{channels} (shape {tuple(image.shape)})")
+
+        rgb = image[..., :3]
+        # BT.601 luma. Not a plain channel mean: the eye is far more sensitive
+        # to green, and averaging makes saturated reds and blues read as the
+        # same grey.
+        weights = torch.tensor([0.2989, 0.5870, 0.1140],
+                               dtype=rgb.dtype, device=rgb.device)
+        luma = (rgb * weights).sum(dim=-1, keepdim=True)
+        gray = luma.repeat(1, 1, 1, 3)
+
+        if channels == 4:
+            alpha = image[..., 3:]
+            gray = gray * alpha + alpha_channel_convert_to * (1.0 - alpha)
+
+        return (gray,)
+
+
 class Multi_Background_Remover:
     """
     Converts 1 to 4 image inputs (front/back/left/right) to a list of processed PIL images.

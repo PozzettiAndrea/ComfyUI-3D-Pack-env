@@ -738,7 +738,7 @@
     },
     {
       "id": 350,
-      "type": "Eden_IMG_padder",
+      "type": "[Comfy3D] Pad Image",
       "pos": [
         -329.80954879404095,
         -427.3873149879231
@@ -759,7 +759,7 @@
       ],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
             701
@@ -769,7 +769,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "Eden_IMG_padder"
+        "Node name for S&R": "[Comfy3D] Pad Image"
       },
       "widgets_values": [
         0.25,
@@ -778,7 +778,7 @@
     },
     {
       "id": 351,
-      "type": "Eden_IMG_padder",
+      "type": "[Comfy3D] Pad Image",
       "pos": [
         30.190451205959107,
         -427.3873149879231
@@ -799,7 +799,7 @@
       ],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
             702
@@ -809,7 +809,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "Eden_IMG_padder"
+        "Node name for S&R": "[Comfy3D] Pad Image"
       },
       "widgets_values": [
         0.2,
@@ -1774,7 +1774,7 @@
     },
     {
       "id": 358,
-      "type": "Image Rembg (Remove Background)",
+      "type": "[Comfy3D] Remove Image Background",
       "pos": [
         -1289.8095487940411,
         -357.3873149879231
@@ -1806,7 +1806,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "Image Rembg (Remove Background)"
+        "Node name for S&R": "[Comfy3D] Remove Image Background"
       },
       "widgets_values": [
         false,

@@ -40,7 +40,7 @@
     },
     {
       "id": 27,
-      "type": "ImpactFloat",
+      "type": "PrimitiveFloat",
       "pos": [
         915,
         -357
@@ -63,7 +63,7 @@
       ],
       "title": "Camera Fovy",
       "properties": {
-        "Node name for S&R": "ImpactFloat"
+        "Node name for S&R": "PrimitiveFloat"
       },
       "widgets_values": [
         49.1

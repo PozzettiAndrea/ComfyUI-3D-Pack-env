@@ -317,7 +317,7 @@
     },
     {
       "id": 51,
-      "type": "LoadImagesFromDir //Inspire",
+      "type": "VHS_LoadImagesPath",
       "pos": [
         13,
         441
@@ -348,24 +348,25 @@
           "slot_index": 1
         },
         {
-          "name": "INT",
+          "name": "frame_count",
           "type": "INT",
           "links": null,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "LoadImagesFromDir //Inspire"
+        "Node name for S&R": "VHS_LoadImagesPath"
       },
       "widgets_values": [
         ".\\example_workflows\\_Example_Inputs_Files\\dragon_all_renders\\Normal",
         0,
-        0
+        0,
+        1
       ]
     },
     {
       "id": 50,
-      "type": "LoadImagesFromDir //Inspire",
+      "type": "VHS_LoadImagesPath",
       "pos": [
         10,
         55
@@ -396,19 +397,20 @@
           "slot_index": 1
         },
         {
-          "name": "INT",
+          "name": "frame_count",
           "type": "INT",
           "links": null,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "LoadImagesFromDir //Inspire"
+        "Node name for S&R": "VHS_LoadImagesPath"
       },
       "widgets_values": [
         ".\\example_workflows\\_Example_Inputs_Files\\dragon_all_renders\\Depth",
         0,
-        0
+        0,
+        1
       ]
     },
     {
@@ -480,7 +482,7 @@
     },
     {
       "id": 53,
-      "type": "LoadImagesFromDir //Inspire",
+      "type": "VHS_LoadImagesPath",
       "pos": [
         10,
         249
@@ -510,19 +512,20 @@
           "slot_index": 1
         },
         {
-          "name": "INT",
+          "name": "frame_count",
           "type": "INT",
           "links": null,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "LoadImagesFromDir //Inspire"
+        "Node name for S&R": "VHS_LoadImagesPath"
       },
       "widgets_values": [
         ".\\example_workflows\\_Example_Inputs_Files\\dragon_all_renders\\Mask",
         0,
-        0
+        0,
+        1
       ]
     }
   ],

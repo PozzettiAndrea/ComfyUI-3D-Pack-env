@@ -290,7 +290,7 @@
     },
     {
       "id": 21,
-      "type": "Image Rembg (Remove Background)",
+      "type": "[Comfy3D] Remove Image Background",
       "pos": [
         940,
         483
@@ -322,7 +322,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "Image Rembg (Remove Background)"
+        "Node name for S&R": "[Comfy3D] Remove Image Background"
       },
       "widgets_values": [
         false,
