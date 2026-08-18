@@ -18,6 +18,17 @@ class Visualizer {
             scrolling: "no",
             overflow: "hidden",
         })
+        // Size it here, not from a draw() callback. An iframe defaults to about
+        // 300x150 regardless of its parent, so without this the viewer sits in a
+        // small box in the corner of the node. The old canvas-widget code set
+        // these every frame from draw(); that went away with the move to
+        // addDOMWidget, and the styling had to come with it.
+        Object.assign(this.iframe.style, {
+            width: "100%",
+            height: "100%",
+            border: "0 none",
+            display: "block",   // kill the inline-element baseline gap
+        })
         this.iframe.src = `/extensions/${EXTENSION_FOLDER}/html/${visualSrc}.html`
         container.appendChild(this.iframe)
     }
@@ -66,27 +77,42 @@ function createVisualizer(node, inputName, typeName, inputData, app) {
     widget.visualizer = container
     widget.parent = node
 
-    // Keep the preview roughly square, as the old draw() did via onResize.
+    // Height comes from computedHeight, NOT computeSize.
+    //
+    // ComfyUI lays a DOM widget out from widget.computedHeight; computeSize is
+    // consulted for ordinary canvas widgets and ignored here. Left alone it
+    // arrives as NaN, and the viewer then renders at a height unrelated to the
+    // node -- width tracked the node correctly while height sat at a constant.
+    // Measured in a browser: node 600x500 and 900x800 both produced a 1000px
+    // tall frame until this was set.
+    const WIDGET_CHROME = 68   // title bar + the node's own padding
+
+    const fitToNode = () => {
+        widget.computedHeight = Math.max(node.size[1] - WIDGET_CHROME, 160)
+    }
+
+    // computeSize stays consistent with it so anything that does read it (the
+    // node's initial auto-size, for one) agrees with what is drawn.
     widget.computeSize = function (width) {
-        return [width, Math.max(width - 100, 400)]
+        return [width, Math.max(node.size[1] - WIDGET_CHROME, 160)]
     }
 
     node.updateParameters = (params) => {
         node.visualizer.updateVisual(params.filepath)
     }
 
-    // Make sure visualization iframe is always inside the node when resize the node
-    node.onResize = function () {
-        let [w, h] = this.size
-        if (w <= 600) w = 600
-        if (h <= 500) h = 500
-
-        if (w > 600) {
-            h = w - 100
-        }
-
-        this.size = [w, h]
+    // Re-fit on every resize. Without this the element keeps whatever height it
+    // was given when the node was created, so dragging the node's corner grew
+    // the node and left the viewer behind.
+    node.onResize = function (size) {
+        const w = Math.max(size ? size[0] : this.size[0], 320)
+        const h = Math.max(size ? size[1] : this.size[1], 240)
+        this.size[0] = w
+        this.size[1] = h
+        fitToNode()
     }
+
+    fitToNode()
 
     // Events for remove nodes
     node.onRemoved = () => {
