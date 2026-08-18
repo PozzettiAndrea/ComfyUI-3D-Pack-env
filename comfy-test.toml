@@ -1,35 +1,6 @@
-# comfy-test config for ComfyUI-3D-Pack-enved.
-#
-# Scope note: this pack vendors 22 model families whose weights are multi-GB
-# downloads, so `execution` is deliberately NOT in the default level set --
-# a full run would pull hundreds of GB from HuggingFace. The levels below
-# prove the thing that this fork actually changed: that the isolated
-# environment builds (install) and that every node registers from it
-# (registration), which is exactly the failure mode upstream has, where one
-# missing dependency de-registers all 97 nodes.
-#
-# The javascript level lints web/ for cross-pack collision hazards in the
-# shared browser page.
-
 [test]
-levels = ["syntax", "install", "registration", "javascript"]
-publish = 'true'
-
-[test.workflows]
-# example_workflows/ holds 52 graphs, but each needs its family's checkpoints
-# present. Enable per-family once weights are cached on the runner.
-cpu = []
-gpu = []
+levels = ["syntax", "coverage", "install", "javascript", "registration", "instantiation", "execution"]
+publish = true
 
 [test.platforms]
-# Every native extension in nodes/comfy-env.toml is a CUDA wheel, so CPU lanes
-# would install nothing interesting and registration would report the nodes as
-# accelerator-unavailable. GPU lanes only.
-linux = false
-macos = false
-windows = false
-windows_portable = false
-linux_gpu = true
-windows_gpu = true
-windows_portable_gpu = false
-windows_desktop_gpu = false
+platforms = ["linux", "macos", "windows", "windows_portable", "macos_desktop", "windows_desktop", "linux_cuda", "windows_cuda", "windows_portable_cuda", "windows_desktop_cuda"]
