@@ -161,18 +161,21 @@ DIFFUSERS_SCHEDULER_DICT = OrderedDict([
 ])
 
 NODES_PATH = os.path.dirname(os.path.realpath(__file__))
-# nodes/ sits one level below the pack root. Checkpoints/, Configs/,
+# nodes/ sits one level below the pack root. model_configs/, Configs/,
 # Gen_3D_Modules/ and MVs_Algorithms/ all stay at the root, so ROOT_PATH keeps
 # its original meaning and every path derived from it below is unchanged.
 ROOT_PATH = os.path.dirname(NODES_PATH)
 
-# Still nodes/Checkpoints/ for now. Moving weights to ComfyUI's models/ tree is
-# the right end state, but it cannot happen before the download policy is fixed:
-# HF_DOWNLOAD_IGNORE below excludes *.json/*.yaml/*.py from the snapshot, so the
-# configs and custom_pipeline code that from_pretrained needs come from git, out
-# of this same directory. Repoint this alone and those downloads land next to no
-# model_index.json and fail.
-CKPT_ROOT_PATH = os.path.join(NODES_PATH, "Checkpoints")
+# nodes/model_configs/ holds the 231 git-tracked *.json / *.yaml configs and the
+# custom_pipeline code that from_pretrained needs -- named for what it actually
+# contains rather than "Checkpoints", which it never only held.
+#
+# Downloaded weights still land here too, which is the part that is not yet
+# right. Moving them to ComfyUI's models/ tree needs the download policy fixed
+# first: HF_DOWNLOAD_IGNORE below excludes *.json/*.yaml/*.py from the snapshot,
+# so those configs come from git, out of this same directory. Repoint this alone
+# and the downloads land next to no model_index.json and fail.
+CKPT_ROOT_PATH = os.path.join(NODES_PATH, "model_configs")
 CKPT_DIFFUSERS_PATH = os.path.join(CKPT_ROOT_PATH, "Diffusers")
 CONFIG_ROOT_PATH = os.path.join(NODES_PATH, "Configs")
 MODULE_ROOT_PATH = os.path.join(NODES_PATH, "Gen_3D_Modules")

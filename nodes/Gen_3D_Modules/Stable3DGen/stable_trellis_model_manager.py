@@ -213,7 +213,7 @@ class TrellisModelManager:
 
     def _ensure_dinov2_weights(self, model_name: str):
         weights_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                                  'Checkpoints', 'facebookresearch', 'dinov2')
+                                  'model_configs', 'facebookresearch', 'dinov2')
         os.makedirs(weights_dir, exist_ok=True)
         
         weights_file = f"{model_name}.pth"

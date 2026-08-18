@@ -40,7 +40,7 @@ pack's isolated environment from `nodes/comfy-env.toml` and fetches the prebuilt
 CUDA wheels; nothing is installed into your ComfyUI environment.
 
 **Model weights** still download on first use, or can be placed manually under
-[`nodes/Checkpoints/`](nodes/Checkpoints) — don't overwrite the existing `.json` files.
+[`nodes/model_configs/`](nodes/model_configs) — don't overwrite the existing `.json` files.
 
 > **Please report any problems** you hit during installation — open a
 > [Discussion](https://github.com/PozzettiAndrea/ComfyUI-3D-Pack-enved/discussions) or
@@ -154,7 +154,7 @@ and `diso`, `pointnet2_ops`, `vox2seq`, `custom_rasterizer` (no recipe yet).
 
 - **StableFast3D**: [Stability-AI/stable-fast-3d](https://github.com/Stability-AI/stable-fast-3d)
   - Single image to 3D Mesh with RGB texture
-  - *Note: you need to agree to Stability-AI's term of usage before been able to download the model weights, if you downloaded model weights manually, then you need to put it under [Checkpoints/StableFast3D](Checkpoints/StableFast3D), otherwise you can add your huggingface token in [Configs/system.conf](Configs/system.conf)*
+  - *Note: you need to agree to Stability-AI's term of usage before been able to download the model weights, if you downloaded model weights manually, then you need to put it under [nodes/model_configs/StableFast3D](nodes/model_configs/StableFast3D), otherwise you can add your huggingface token in [Configs/system.conf](Configs/system.conf)*
   - Model weights: https://huggingface.co/stabilityai/stable-fast-3d/tree/main
 
   <video controls autoplay loop src="https://github.com/user-attachments/assets/3ed3d1ed-4abe-4959-bd79-4431d19c9d47"></video>
@@ -338,7 +338,7 @@ and `diso`, `pointnet2_ops`, `vox2seq`, `custom_rasterizer` (no recipe yet).
 - **[Configs](Configs)**:
 <br>A folder that contains different config files for different modules, new config should be added here, use a sub folder if there are more than one config to a single module (e.g. [Unique3D](Configs/Unique3D_configs), [CRM](Configs/CRM_configs))
 
-- **[Checkpoints](Checkpoints)**:
+- **[nodes/model_configs](nodes/model_configs)**:
 <br>A folder that contains all the pre-trained model and some of the model architecture config files required by diffusers, New checkpoints if could be downloaded automatically by `Load_Diffusers Pipeline` node, then it should be added here
 
 - **[install.py](install.py)**: 
