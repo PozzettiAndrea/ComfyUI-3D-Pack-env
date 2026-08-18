@@ -370,7 +370,9 @@ class MeshRender:
 
         self.raster_mode = raster_mode
         if self.raster_mode == "cr":
-            from .. import custom_rasterizer as cr
+            # Inner package, not the source-repo root -- see the note in
+            # Hunyuan3D_V2/.../mesh_render.py. The outer __init__.py is empty.
+            from ..custom_rasterizer import custom_rasterizer as cr
 
             self.raster = cr
         else:

@@ -142,7 +142,12 @@ class MeshRender():
 
         self.raster_mode = raster_mode
         if self.raster_mode == 'cr':
-            from .....Hunyuan3D_2_1.hy3dpaint import custom_rasterizer as cr
+            # The importable package is the INNER custom_rasterizer/; the outer
+            # directory is the upstream source-repo root (setup.py, lib/) and its
+            # __init__.py is empty, so importing that level yields a module with
+            # no rasterize/interpolate. The compiled half ships separately as the
+            # custom_rasterizer_kernel extension from the cuda-wheels farm.
+            from .....Hunyuan3D_2_1.hy3dpaint.custom_rasterizer import custom_rasterizer as cr
             self.raster = cr
         else:
             raise f'No raster named {self.raster_mode}'

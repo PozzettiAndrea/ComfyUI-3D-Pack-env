@@ -22,6 +22,10 @@ except Exception as e:
 # Import mmgp for memory management
 try:
     from mmgp import offload, profile_type
+    # mmgp replaces safetensors.safe_open on import with a signature that
+    # predates the `backend` kwarg transformers 5.x passes; re-widen it.
+    from ...shared_utils.mmgp_compat import keep_safe_open_compatible
+    keep_safe_open_compatible()
     logger.info("mmgp available for memory management")
 except ImportError:
     logger.warning("Warning: mmgp module not found")

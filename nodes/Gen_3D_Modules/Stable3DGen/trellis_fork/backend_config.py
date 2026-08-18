@@ -45,11 +45,19 @@ def _try_import_flash_attn() -> bool:
         return False
 
 def _try_import_sageattention() -> bool:
+    """Report whether sageattention is importable. Does NOT install it.
+
+    This used to do `F.scaled_dot_product_attention = sageattn` here, so merely
+    asking which backends exist replaced PyTorch's SDPA for the whole process --
+    including every model that never opted into sage. sageattn rejects
+    head_dim > 128, so the first thing to break was an unrelated VAE mid-block
+    attention (head_dim 512) inside diffusers, four libraries away.
+
+    modules/attention/full_attn.py installs sageattn in its `BACKEND == "sage"`
+    branch, which is where a backend choice belongs.
+    """
     try:
-        import torch.nn.functional as F
-        from sageattention import sageattn
-        F.scaled_dot_product_attention = sageattn
-        #import sageattention
+        import sageattention  # noqa: F401
         return True
     except ImportError:
         return False

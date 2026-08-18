@@ -33,7 +33,13 @@ class Multiview_Diffusion_Net():
 
         pipeline = DiffusionPipeline.from_pretrained(
             multiview_ckpt_path,
-            custom_pipeline=custom_pipeline_path, torch_dtype=torch.float16)
+            custom_pipeline=custom_pipeline_path, torch_dtype=torch.float16,
+            # custom_pipeline_path is ../hunyuanpaint inside this pack -- its
+            # pipeline.py and unet/modules.py are git-tracked here, not fetched.
+            # Newer diffusers refuses to exec a custom pipeline without this
+            # flag even when the path is local, so it is the pack trusting its
+            # own vendored code rather than anything remote.
+            trust_remote_code=True)
 
         if config.pipe_name in ['hunyuanpaint']:
             pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config,

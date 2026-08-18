@@ -430,12 +430,35 @@ class UNet2p5DConditionModel(torch.nn.Module):
     def from_pretrained(pretrained_model_name_or_path, **kwargs):
         torch_dtype = kwargs.pop('torch_dtype', torch.float32)
         config_path = os.path.join(pretrained_model_name_or_path, 'config.json')
-        unet_ckpt_path = os.path.join(pretrained_model_name_or_path, 'diffusion_pytorch_model.bin')
+        # Upstream only ever looked for the .bin. Tencent ships both formats
+        # for this unet -- 7.32 GB of fp32 .bin beside 3.72 GB of safetensors
+        # holding the same tensors -- so preferring safetensors halves the
+        # download and skips a torch.load pickle. .bin stays as the fallback
+        # for checkpoints that genuinely only have it.
+        unet_ckpt_path = os.path.join(pretrained_model_name_or_path,
+                                      'diffusion_pytorch_model.safetensors')
+        if not os.path.isfile(unet_ckpt_path):
+            unet_ckpt_path = os.path.join(pretrained_model_name_or_path,
+                                          'diffusion_pytorch_model.bin')
         with open(config_path, 'r', encoding='utf-8') as file:
             config = json.load(file)
         unet = UNet2DConditionModel(**config)
         unet = UNet2p5DConditionModel(unet)
-        unet_ckpt = torch.load(unet_ckpt_path, map_location='cpu', weights_only=True)
+        if unet_ckpt_path.endswith('.safetensors'):
+            from safetensors.torch import load_file
+            unet_ckpt = load_file(unet_ckpt_path, device='cpu')
+            # Not the same checkpoint as the .bin, despite the name. Tencent's
+            # safetensors is a strict superset: every one of the .bin's 1535
+            # tensors in fp16, plus 36 IP-Adapter keys (to_k_ip / to_v_ip /
+            # image_proj_model) that this vendored UNet2p5DConditionModel never
+            # declares. Drop exactly those so strict=True still means something
+            # for the weights the model does expect.
+            known = set(unet.state_dict())
+            dropped = [k for k in unet_ckpt if k not in known]
+            if dropped:
+                unet_ckpt = {k: v for k, v in unet_ckpt.items() if k in known}
+        else:
+            unet_ckpt = torch.load(unet_ckpt_path, map_location='cpu', weights_only=True)
         unet.load_state_dict(unet_ckpt, strict=True)
         unet = unet.to(torch_dtype)
         return unet

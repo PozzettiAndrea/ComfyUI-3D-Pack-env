@@ -109,7 +109,6 @@ from .Gen_3D_Modules.TripoSG.pipelines.pipeline_triposg import TripoSGPipeline
 from .Gen_3D_Modules.TripoSG.pipelines.pipeline_triposg_scribble import TripoSGScribblePipeline
 from .Gen_3D_Modules.Stable3DGen.pipeline_builders import StableGenPipelineBuilder
 from .Gen_3D_Modules.MV_Adapter.mvadapter_node_utils import prepare_pipeline as mvadapter_prepare_pipeline, run_pipeline as mvadapter_run_pipeline, prepare_tg2mv_pipeline as mvadapter_prepare_tg2mv_pipeline, run_tg2mv_pipeline as mvadapter_run_tg2mv_pipeline, prepare_texture_pipeline as mvadapter_prepare_texture_pipeline, download_texture_checkpoints
-from mmgp import offload, profile_type
 from .Gen_3D_Modules.Hunyuan3D_2_1 import FaceReducer_2_1, Hunyuan3DDiTFlowMatchingPipeline_2_1, export_to_trimesh_2_1, BackgroundRemover_2_1, Hunyuan3DPaintPipeline_2_1, Hunyuan3DPaintConfig_2_1, create_glb_with_pbr_materials_2_1
 from .Gen_3D_Modules.Hunyuan3D_2_1.hy3dpaint.utils.torchvision_fix import apply_fix
 apply_fix()
@@ -4207,6 +4206,7 @@ class Hunyuan3D_V2_Paint_Model:
         f_np = mesh.f.detach().cpu().numpy()
 
         mesh = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
+        hunyuan3d_v2_texgen_pipe = resolve_hunyuan3d_v2_texgen(hunyuan3d_v2_texgen_pipe)
         mesh = hunyuan3d_v2_texgen_pipe(mesh, single_image)
 
         mesh = Mesh.load_trimesh(given_mesh=mesh)
@@ -4568,16 +4568,40 @@ class Load_Hunyuan3D_V2_TexGen_Pipeline:
     def load(self, generation_mode):
         repo_id, subfolder = self.MODEL2REPO[generation_mode]
 
+        # Fetch here so this node is what reports a network failure, but do NOT
+        # build the pipeline: a live Hunyuan3DPaintPipeline holds module
+        # objects and cannot cross comfy-env's worker boundary (pickle fails on
+        # 'module'). Emit the JSON-safe recipe instead and let the consumer
+        # materialize it in-process, the same way Load_Diffusers_Pipeline does.
         self._download_required_weights(repo_id, subfolder)
 
-        local_repo_dir = os.path.join(CKPT_DIFFUSERS_PATH, repo_id)
+        return (model_cache.recipe(
+            "hunyuan3d_v2_texgen",
+            repo_id=repo_id,
+            subfolder=subfolder,
+        ),)
 
-        pipe = Hunyuan3DPaintPipeline.from_pretrained(
-            model_path=local_repo_dir,
-            subfolder=subfolder
-        )
 
-        return (pipe.to(DEVICE, WEIGHT_DTYPE),)
+def _build_hunyuan3d_v2_texgen(config):
+    """Materialize a hunyuan3d_v2_texgen recipe. Called only on a cache miss."""
+    local_repo_dir = os.path.join(CKPT_DIFFUSERS_PATH, config["repo_id"])
+    pipe = Hunyuan3DPaintPipeline.from_pretrained(
+        model_path=local_repo_dir,
+        subfolder=config["subfolder"],
+    )
+    return pipe.to(DEVICE, WEIGHT_DTYPE)
+
+
+def resolve_hunyuan3d_v2_texgen(config):
+    """hunyuan3d_v2_texgen recipe -> live pipeline, cached across runs.
+
+    Accepts an already-built pipeline unchanged, so a graph saved before this
+    node emitted recipes keeps working.
+    """
+    if not isinstance(config, dict):
+        return config
+    return model_cache.resolve("hunyuan3d_v2_texgen", config,
+                               _build_hunyuan3d_v2_texgen)
 
 class Hunyuan3D_V2_Paint_Model_Turbo_MV:
     """
@@ -4610,6 +4634,7 @@ class Hunyuan3D_V2_Paint_Model_Turbo_MV:
         f_np = mesh.f.detach().cpu().numpy()
         tri = trimesh.Trimesh(vertices=v_np, faces=f_np, process=False)
 
+        hunyuan3d_v2_texgen_pipe = resolve_hunyuan3d_v2_texgen(hunyuan3d_v2_texgen_pipe)
         try:
             textured = hunyuan3d_v2_texgen_pipe(tri, images)
         except Exception as e:
@@ -5494,6 +5519,13 @@ class Load_Hunyuan3D_21_TexGen_Pipeline:
         
         if enable_mmgp:
             try:
+                # Imported here, not at module scope: importing mmgp replaces
+                # safetensors.safe_open process-wide, which breaks every
+                # transformers safetensors load. See shared_utils/mmgp_compat.
+                from mmgp import offload, profile_type
+                from .shared_utils.mmgp_compat import keep_safe_open_compatible
+                keep_safe_open_compatible()
+
                 core_pipe = pipeline.models["multiview_model"].pipeline
                 offload.profile(core_pipe, profile_type.LowRAM_LowVRAM)
                 print("mmgp optimization enabled for texture pipeline")
