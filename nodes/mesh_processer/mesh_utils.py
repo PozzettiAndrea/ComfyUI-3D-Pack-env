@@ -455,17 +455,31 @@ def switch_ply_axis_and_scale(plydata, target_axis, target_scale, coordinate_inv
         target_axis (array): shape (3)
         target_scale (array): shape (3)
     """
+    # Imported here, not at module scope, per this file's lazy-import policy.
+    # These two names WERE the reason kornia was imported at the top; a cleanup
+    # removed that import as unused, which turned this node into a NameError the
+    # moment anyone switched a 3DGS axis. Both kornia and pytorch3d take a
+    # real-first (w, x, y, z) quaternion, which is what a 3DGS ply stores.
+    from kornia.geometry.conversions import (
+        axis_angle_to_quaternion,
+        quaternion_to_axis_angle,
+    )
+
     xyz, features_dc, features_extra, opacities, scales, rots = read_gs_ply(plydata)
     normals = np.zeros_like(xyz)
     features_dc_2d = features_dc.reshape(features_dc.shape[0], features_dc.shape[1]*features_dc.shape[2])
     features_extra_2d = features_extra.reshape(features_extra.shape[0], features_extra.shape[1]*features_extra.shape[2])
     
-    target_scale = torch.tensor(target_scale).float().cuda()
-    xyz = switch_vector_axis(torch.tensor(xyz).float().cuda() * target_scale, target_axis).detach().cpu().numpy()
-    scales = switch_vector_axis(torch.tensor(scales).float().cuda(), target_axis).detach().cpu().numpy()
+    # .cuda() hardcoded here would ignore --cpu and crash on a non-CUDA build.
+    import comfy.model_management
+    device = comfy.model_management.get_torch_device()
+
+    target_scale = torch.tensor(target_scale).float().to(device)
+    xyz = switch_vector_axis(torch.tensor(xyz).float().to(device) * target_scale, target_axis).detach().cpu().numpy()
+    scales = switch_vector_axis(torch.tensor(scales).float().to(device), target_axis).detach().cpu().numpy()
     
     # change rotation representation from quaternion (w, x, y, z) to axis angle vector (x, y, z) to make swich axis easier
-    rots_axis_angle = quaternion_to_axis_angle(torch.tensor(rots).float().cuda())
+    rots_axis_angle = quaternion_to_axis_angle(torch.tensor(rots).float().to(device))
     rots_axis_angle = switch_vector_axis(rots_axis_angle * target_scale, target_axis)
     """
     Since axis–angle vector is composed of axis (unit vector/direction) and clockwise radians angle (vector magnitude),
@@ -483,7 +497,9 @@ def switch_mesh_axis_and_scale(mesh, target_axis, target_scale, flip_normal=Fals
         target_axis (array): shape (3)
         target_scale (array): shape (3)
     """
-    target_scale = torch.tensor(target_scale).float().cuda()
+    # Follow the mesh's own device rather than forcing CUDA: mesh.v arrives from
+    # the TRIMESH wire on CPU, and multiplying it by a .cuda() tensor raises.
+    target_scale = torch.tensor(target_scale).float().to(mesh.v.device)
     mesh.v = switch_vector_axis(mesh.v * target_scale, target_axis)
     mesh.vn = switch_vector_axis(mesh.vn * target_scale, target_axis)
     if flip_normal:
