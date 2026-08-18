@@ -11,7 +11,10 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers import ModelMixin
 from diffusers.utils import BaseOutput
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.models.attention import CrossAttention, FeedForward, AdaLayerNorm
+# diffusers renamed CrossAttention to Attention; same class, so alias it rather
+# than rewriting the three construction sites and the subclass below.
+from diffusers.models.attention import Attention as CrossAttention
+from diffusers.models.attention import FeedForward, AdaLayerNorm
 
 from einops import rearrange, repeat
 

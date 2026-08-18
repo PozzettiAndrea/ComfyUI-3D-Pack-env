@@ -1575,6 +1575,29 @@ class Load_Diffusers_Pipeline:
         ), )
 
 
+def _try_enable_xformers(obj, disabled=False):
+    """Switch `obj` to xformers attention if xformers is installed and wanted.
+
+    xformers is deliberately not a dependency of this pack -- it caps flash-attn
+    at <=2.8.2 while the wheel farm builds 2.8.3, and that ImportError used to
+    take every node in the pack down with it. See nodes/comfy-env.toml.
+
+    Skipping this is a backend change, not a lost optimisation: on torch 2.x
+    diffusers already defaults to AttnProcessor2_0, which is PyTorch SDPA and
+    dispatches to flash kernels. This call was switching *off* that default.
+    Kept so an environment that does have xformers still behaves as before.
+    """
+    if disabled or not hasattr(obj, "enable_xformers_memory_efficient_attention"):
+        return
+    try:
+        obj.enable_xformers_memory_efficient_attention()
+    except (ModuleNotFoundError, ImportError, ValueError) as exc:
+        # ModuleNotFoundError is what diffusers raises when xformers is absent
+        # (attention_processor.py:405); ValueError when the device cannot use it.
+        cstr(f"[Comfy3D] xformers attention unavailable, using the default "
+             f"backend instead ({type(exc).__name__})").msg.print()
+
+
 def _build_diffusers_pipe(config):
     """Materialize a DIFFUSERS_PIPE recipe. Called only on a cache miss."""
     ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, config["repo_id"])
@@ -1588,8 +1611,7 @@ def _build_diffusers_pipe(config):
         custom_pipeline=config.get("custom_pipeline"),
     ).to(DEVICE, WEIGHT_DTYPE)
 
-    if hasattr(pipe, 'enable_xformers_memory_efficient_attention') and not config.get("force_disable_xformers"):
-        pipe.enable_xformers_memory_efficient_attention()
+    _try_enable_xformers(pipe, disabled=config.get("force_disable_xformers"))
 
     # Replay the mutator chain in the order the graph applied it.
     for op in config.get("ops", []):
@@ -1605,7 +1627,7 @@ def _build_diffusers_pipe(config):
             )
             state_dict = torch.load(ckpt_path, map_location='cpu')
             pipe.unet.load_state_dict(state_dict, strict=True)
-            pipe.enable_xformers_memory_efficient_attention()
+            _try_enable_xformers(pipe, disabled=config.get("force_disable_xformers"))
             pipe = pipe.to(DEVICE)
         else:
             raise ValueError(f"unknown DIFFUSERS_PIPE op {op['op']!r}")
@@ -2969,7 +2991,7 @@ class Load_Unique3D_Custom_UNet:
             cfg.init_config.init_unet_path = checkpoint_dir_path
         init_config: AttnConfig = load_config(AttnConfig, cfg.init_config)
         configurable_unet = ConfigurableUNet2DConditionModel(init_config, WEIGHT_DTYPE)
-        configurable_unet.enable_xformers_memory_efficient_attention()
+        _try_enable_xformers(configurable_unet)
 
         state_dict = torch.load(checkpoint_path)
         configurable_unet.unet.load_state_dict(state_dict, strict=False)

@@ -38,7 +38,8 @@ from diffusers.models.unets.unet_2d_blocks import (
     get_down_block,
 )
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
-from diffusers.models.controlnet import ControlNetOutput
+# diffusers moved controlnet into a controlnets/ subpackage.
+from diffusers.models.controlnets.controlnet import ControlNetOutput
 from diffusers.models import ControlNetModel
 
 import pdb

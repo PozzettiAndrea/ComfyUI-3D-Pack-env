@@ -86,9 +86,33 @@ def get_available_sparse_backends() -> Dict[str, bool]:
     }
 
 def get_attention_backend() -> str:
-    """Get current attention backend"""
+    """Get the attention backend, falling back when the configured one is absent.
+
+    ATTN is a static default ('xformers'), and the dispatch in
+    modules/attention/full_attn.py guards each branch on availability and then
+    raises ValueError if none matched -- so an uninstalled default takes the
+    whole pack down at import rather than degrading. Resolving here keeps that
+    dispatch honest whatever is installed.
+
+    flash_attn first because it is the faster kernel and this pack ships it.
+    sage is deliberately NOT auto-selected: it is 8-bit and changes numerics,
+    which would silently move rendered output. Ask for it explicitly through
+    SPARSE_ATTN_BACKEND. sdpa is last and always works -- on torch 2.x it
+    dispatches to flash kernels anyway.
+    """
     global ATTN
-    return ATTN
+    available = get_available_backends()
+    if available.get(ATTN):
+        return ATTN
+
+    for candidate in ('flash_attn', 'xformers', 'sdpa'):
+        if available.get(candidate):
+            logger.warning(
+                "attention backend %r is not installed; using %r instead",
+                ATTN, candidate,
+            )
+            return candidate
+    return 'sdpa'
 
 def get_sparse_backend() -> str:
     """Get current sparse backend"""

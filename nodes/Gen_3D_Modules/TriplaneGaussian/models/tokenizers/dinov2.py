@@ -33,10 +33,10 @@ from transformers.modeling_outputs import (
     ImageClassifierOutput,
 )
 from transformers.modeling_utils import PreTrainedModel
-from transformers.pytorch_utils import (
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
-)
+from transformers.pytorch_utils import prune_linear_layer
+# transformers 5.x dropped find_pruneable_heads_and_indices; only
+# prune_heads() below uses it, and inference never calls that.
+from .....shared_utils.hf_compat import find_pruneable_heads_and_indices
 from transformers.utils import (
     add_code_sample_docstrings,
     add_start_docstrings,

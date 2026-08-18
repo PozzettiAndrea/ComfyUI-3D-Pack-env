@@ -34,10 +34,10 @@ from transformers.modeling_outputs import (
     ImageClassifierOutput,
 )
 from transformers.modeling_utils import PreTrainedModel
-from transformers.pytorch_utils import (
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
-)
+from transformers.pytorch_utils import prune_linear_layer
+# transformers 5.x dropped find_pruneable_heads_and_indices; only
+# prune_heads() below uses it, and inference never calls that.
+from .......shared_utils.hf_compat import find_pruneable_heads_and_indices
 from transformers.utils import (
     add_code_sample_docstrings,
     add_start_docstrings,
@@ -47,7 +47,8 @@ from transformers.utils import (
 )
 from transformers.utils.backbone_utils import BackboneMixin
 from transformers.models.dinov2.configuration_dinov2 import Dinov2Config
-import xformers
+
+import importlib.util
 
 from ..transformers.attention import MemoryEfficientAttentionMixin
 from ...utils.typing import *
@@ -271,6 +272,13 @@ class Dinov2SelfAttention(nn.Module):
         mixed_query_layer = self.query(hidden_states)
 
         if self.use_memory_efficient_attention_xformers:
+            # Imported here, not at module scope: xformers is not installed by
+            # this pack (it caps flash-attn below what the wheel farm builds),
+            # and this branch is off unless something calls
+            # set_use_memory_efficient_attention_xformers(True). The SDPA branch
+            # below is the default path.
+            import xformers.ops
+
             assert head_mask is None and not output_attentions
             new_size = hidden_states.size()[:-1] + (
                 self.num_attention_heads,
@@ -338,6 +346,10 @@ class Dinov2SelfAttention(nn.Module):
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
     ):
+        if valid and importlib.util.find_spec("xformers") is None:
+            # Asking for a backend that is not installed would fail later, in
+            # the middle of a forward pass. Fall through to SDPA instead.
+            valid = False
         self.use_memory_efficient_attention_xformers = valid
 
 

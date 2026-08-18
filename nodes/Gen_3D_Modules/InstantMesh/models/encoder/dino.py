@@ -28,7 +28,10 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPooling,
 )
 from transformers import PreTrainedModel, ViTConfig
-from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
+from transformers.pytorch_utils import prune_linear_layer
+# transformers 5.x dropped find_pruneable_heads_and_indices; only
+# prune_heads() below uses it, and inference never calls that.
+from .....shared_utils.hf_compat import find_pruneable_heads_and_indices
 
 import comfy.ops
 

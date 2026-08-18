@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers.models.controlnet import ControlNetOutput
+# diffusers moved controlnet into a controlnets/ subpackage.
+from diffusers.models.controlnets.controlnet import ControlNetOutput
 from diffusers.models import ControlNetModel
 
 

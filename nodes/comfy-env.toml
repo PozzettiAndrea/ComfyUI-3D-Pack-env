@@ -26,9 +26,19 @@ cxx-compiler = "*"
 comfy-kitchen = "*"
 comfy-aimdo = "*"
 
-# xformers is NOT a farm package: upstream publishes per-torch/cu wheels itself.
-# 70 files across the multi-view diffusion families import it.
-xformers = "*"
+# xformers deliberately absent. It caps flash-attn at <=2.8.2
+# (xformers/ops/fmha/flash.py) and raises ImportError above that, while the
+# cuda-wheels farm builds flash_attn 2.8.3. diffusers imports xformers, and 94
+# files here import diffusers, so the whole pack failed to register -- 0 nodes.
+#
+# The cap exists nowhere else: ComfyUI-TRELLIS2 takes the same 2.8.3 from the
+# same farm and works, because it never installs xformers.
+#
+# Nothing is lost. On torch 2.x diffusers already defaults to AttnProcessor2_0
+# (attention_processor.py:307), i.e. PyTorch SDPA, which dispatches to flash
+# kernels; enable_xformers_memory_efficient_attention() switched *off* that
+# default. The shipped TripoSG workflows already pass force_disable_xformers.
+# The 34 in-pack imports are guarded and take their existing fallback.
 
 # ML / diffusion stack. Left unpinned on purpose -- see the header note about
 # the vendored pins being pip-freezes rather than real constraints.
