@@ -174,6 +174,14 @@ def _ensure_comfy_model(folder, filename, *, url=None, repo_id=None, repo_file=N
         # loaders only look in the folder root, so put it where they look.
         if os.path.abspath(src) != os.path.abspath(dest):
             os.replace(src, dest)
+            # and remove the now-empty repo subdirs it left behind
+            parent = os.path.dirname(src)
+            while os.path.normpath(parent) != os.path.normpath(target_dir):
+                try:
+                    os.rmdir(parent)
+                except OSError:
+                    break
+                parent = os.path.dirname(parent)
     return filename
 
 
@@ -3332,6 +3340,65 @@ class FlexiCubes_MVS:
             mesh = fc_trainer.get_mesh()
             
             return (_wire_out(mesh), )
+
+class Load_Stable_Diffusion_15_Assets:
+    """Fetch the stock SD1.5-era models the Unique3D upscale graphs need.
+
+    Unique3D's upscale stages are built from NATIVE ComfyUI nodes --
+    CheckpointLoaderSimple, CLIPVisionLoader, UpscaleModelLoader -- each of
+    which takes a combo of whatever happens to be in the corresponding models/
+    folder. On a fresh install those folders are empty, so the graph fails
+    validation before a single node runs, naming a file the user has no obvious
+    way to obtain.
+
+    This node downloads them and returns their NAMES, so each output can feed
+    the matching native loader's widget. The link is doing real work: it orders
+    execution, so the loader cannot run before the download finishes.
+
+    It is a separate node, not extra outputs on a Unique3D loader, precisely so
+    it only runs when something is wired to it -- these three files are ~4.7 GB
+    and nobody generating a mesh should pay for them.
+
+    All three are safetensors or a plain .pth; nothing here pulls a pickle.
+    """
+
+    DISPLAY_NAME = "(Down)Load SD1.5 Assets (checkpoint / CLIP-Vision / upscaler)"
+
+    CATEGORY = "Comfy3D/Import|Export"
+    RETURN_TYPES = ("COMBO", "COMBO", "COMBO")
+    RETURN_NAMES = ("ckpt_name", "clip_name", "upscale_model_name")
+    FUNCTION = "download"
+
+    # fp16 rather than the 4.3 GB fp32 original: same weights, half the disk,
+    # and the graphs run it in fp16 regardless.
+    CKPT_REPO = "Comfy-Org/stable-diffusion-v1-5-archive"
+    CKPT_FILE = "v1-5-pruned-emaonly-fp16.safetensors"
+
+    # The OpenCLIP ViT-H image encoder IPAdapter expects. h94/IP-Adapter is the
+    # IPAdapter authors' own repo; laion's copy no longer serves this filename.
+    CLIP_REPO = "h94/IP-Adapter"
+    CLIP_REPO_FILE = "models/image_encoder/model.safetensors"
+    CLIP_FILE = "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+
+    UPSCALER_URL = ("https://github.com/xinntao/Real-ESRGAN/releases/download/"
+                    "v0.1.0/RealESRGAN_x4plus.pth")
+    UPSCALER_FILE = "RealESRGAN_x4plus.pth"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    def download(self):
+        ckpt = _ensure_comfy_model("checkpoints", self.CKPT_FILE,
+                                   repo_id=self.CKPT_REPO, repo_file=self.CKPT_FILE)
+        clip = _ensure_comfy_model("clip_vision", self.CLIP_FILE,
+                                   repo_id=self.CLIP_REPO, repo_file=self.CLIP_REPO_FILE)
+        upscaler = _ensure_comfy_model("upscale_models", self.UPSCALER_FILE,
+                                       url=self.UPSCALER_URL)
+
+        cstr(f"[{self.__class__.__name__}] ready: {ckpt}, {clip}, {upscaler}").msg.print()
+        return (ckpt, clip, upscaler)
+
 
 class Load_Unique3D_Custom_UNet:
     default_repo_id = "MrForExample/Unique3D"

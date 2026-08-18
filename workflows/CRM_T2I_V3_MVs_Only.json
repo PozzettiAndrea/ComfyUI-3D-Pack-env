@@ -128,7 +128,7 @@
     },
     {
       "id": 2,
-      "type": "VHS_LoadImagesPath",
+      "type": "LoadImage",
       "pos": {
         "0": 340,
         "1": 506
@@ -160,36 +160,15 @@
           ],
           "slot_index": 1,
           "shape": 3
-        },
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": null,
-          "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "VHS_LoadImagesPath"
+        "Node name for S&R": "LoadImage"
       },
-      "widgets_values": {
-        "directory": "C:\\Users\\reall\\Softwares\\ComfyUI_windows_portable\\ComfyUI\\input\\Test_CRM_T2I_V2\\RGBA",
-        "image_load_cap": 2,
-        "skip_first_images": 0,
-        "select_every_nth": 1,
-        "choose folder to upload": "image",
-        "videopreview": {
-          "hidden": false,
-          "paused": false,
-          "params": {
-            "frame_load_cap": 2,
-            "skip_first_images": 0,
-            "filename": "C:\\Users\\reall\\Softwares\\ComfyUI_windows_portable\\ComfyUI\\input\\Test_CRM_T2I_V2\\RGBA",
-            "type": "path",
-            "format": "folder",
-            "select_every_nth": 1
-          }
-        }
-      }
+      "widgets_values": [
+        "PirateCat.png",
+        "image"
+      ]
     },
     {
       "id": 9,
