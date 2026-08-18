@@ -1429,9 +1429,7 @@
       "properties": {
         "Node name for S&R": "[Comfy3D] Load CharacterGen MVDiffusion Model"
       },
-      "widgets_values": [
-        false
-      ]
+      "widgets_values": []
     },
     {
       "id": 355,
@@ -1976,8 +1974,6 @@
       "widgets_values": [
         "Unique3DImageCustomPipeline",
         "MrForExample/Unique3D",
-        "",
-        false,
         "image2normal"
       ]
     }

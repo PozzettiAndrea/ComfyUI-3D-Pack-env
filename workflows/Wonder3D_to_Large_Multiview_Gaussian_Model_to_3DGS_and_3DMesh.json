@@ -201,9 +201,7 @@
       },
       "widgets_values": [
         "MVDreamPipeline",
-        "ashawkey/imagedream-ipmv-diffusers",
-        "",
-        true
+        "ashawkey/imagedream-ipmv-diffusers"
       ]
     },
     {
@@ -651,9 +649,7 @@
       },
       "widgets_values": [
         "Wonder3DMVDiffusionPipeline",
-        "flamehaze1115/wonder3d-v1.0",
-        "",
-        true
+        "flamehaze1115/wonder3d-v1.0"
       ]
     }
   ],

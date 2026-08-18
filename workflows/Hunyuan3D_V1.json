@@ -76,8 +76,6 @@
       "widgets_values": [
         "Hunyuan3DMVDLitePipeline",
         "tencent/Hunyuan3D-1",
-        "",
-        false,
         "mvd_lite"
       ]
     },
@@ -110,7 +108,6 @@
         "Node name for S&R": "[Comfy3D] Load Hunyuan3D V1 Reconstruction Model"
       },
       "widgets_values": [
-        false,
         true
       ]
     },
@@ -143,8 +140,6 @@
       "widgets_values": [
         "Hunyuan3DMVDLitePipeline",
         "tencent/Hunyuan3D-1",
-        "",
-        false,
         "mvd_std"
       ]
     },
@@ -175,7 +170,6 @@
         "Node name for S&R": "[Comfy3D] Load Hunyuan3D V1 Reconstruction Model"
       },
       "widgets_values": [
-        false,
         true
       ]
     },

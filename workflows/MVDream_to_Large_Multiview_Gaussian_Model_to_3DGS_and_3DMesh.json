@@ -413,9 +413,7 @@
       },
       "widgets_values": [
         "MVDreamPipeline",
-        "ashawkey/imagedream-ipmv-diffusers",
-        "",
-        true
+        "ashawkey/imagedream-ipmv-diffusers"
       ]
     },
     {

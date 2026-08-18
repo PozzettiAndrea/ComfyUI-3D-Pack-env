@@ -222,7 +222,12 @@ DEVICE = torch.device(DEVICE_STR)
 HF_DOWNLOAD_IGNORE = [
     "*.yaml", "*.json", "*.py",
     "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp",
-    ".gitattributes",
+    # Repo furniture, not weights. These are git-tracked here, and a download
+    # was silently rewriting them: fetching tencent/Hunyuan3D-1 replaced this
+    # pack's committed LICENSE.txt, Notice and README.md with whatever upstream
+    # serves today. .gitattributes is worse than cosmetic -- it carries HF's
+    # LFS rules for *.ckpt/*.safetensors/*.bin, into the tree those land in.
+    ".gitattributes", "*.md", "*.txt", "Notice", "LICENSE",
 ]
 
 
@@ -1587,12 +1592,9 @@ class Load_Diffusers_Pipeline:
             "required": {
                 "diffusers_pipeline_name": (list(DIFFUSERS_PIPE_DICT.keys()),),
                 "repo_id": ("STRING", {"default": "ashawkey/imagedream-ipmv-diffusers", "multiline": False}),
-                "custom_pipeline": ("STRING", {"default": "", "multiline": False}),
-                "force_download": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "checkpoint_sub_dir": ("STRING", {"default": "", "multiline": False}),
-                "force_disable_xformers": ("BOOLEAN", {"default": False}),
             }
         }
     
@@ -1605,21 +1607,19 @@ class Load_Diffusers_Pipeline:
     FUNCTION = "load_diffusers_pipe"
     CATEGORY = "Comfy3D/Import|Export"
     
-    def load_diffusers_pipe(self, diffusers_pipeline_name, repo_id, custom_pipeline, force_download, checkpoint_sub_dir="", force_disable_xformers=False):
+    def load_diffusers_pipe(self, diffusers_pipeline_name, repo_id, checkpoint_sub_dir=""):
 
         # Download here (cheap when already present, and it keeps the loader
         # node as the thing that reports network failures), but do NOT build
         # the pipeline -- that happens in resolve_diffusers_pipe on first use.
         ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, repo_id)
-        download_repo(repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
+        download_repo(repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE)
 
         return (model_cache.recipe(
             "diffusers_pipe",
             pipeline_name=diffusers_pipeline_name,
             repo_id=repo_id,
-            custom_pipeline=custom_pipeline or None,
             checkpoint_sub_dir=checkpoint_sub_dir,
-            force_disable_xformers=force_disable_xformers,
         ), )
 
 
@@ -1646,6 +1646,21 @@ def _try_enable_xformers(obj, disabled=False):
              f"backend instead ({type(exc).__name__})").msg.print()
 
 
+# recipe kind -> builder. A consumer takes a DIFFUSERS_PIPE without knowing
+# which loader filled it, so it cannot pick a per-loader resolver; it calls
+# resolve_diffusers_pipe and this table decides what to build.
+_PIPE_BUILDERS = {}
+
+
+def _pipe_builder(kind):
+    """Register a builder for one recipe kind."""
+    def register(fn):
+        _PIPE_BUILDERS[kind] = fn
+        return fn
+    return register
+
+
+@_pipe_builder("diffusers_pipe")
 def _build_diffusers_pipe(config):
     """Materialize a DIFFUSERS_PIPE recipe. Called only on a cache miss."""
     ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, config["repo_id"])
@@ -1653,13 +1668,15 @@ def _build_diffusers_pipe(config):
     ckpt_path = os.path.join(ckpt_download_dir, sub_dir) if sub_dir else ckpt_download_dir
 
     diffusers_pipeline_class = DIFFUSERS_PIPE_DICT[config["pipeline_name"]]
+    # No custom_pipeline: it was '' in every shipped workflow, the classes in
+    # DIFFUSERS_PIPE_DICT are imported directly, and it is the one argument that
+    # would have diffusers fetch and exec code from a repo id.
     pipe = diffusers_pipeline_class.from_pretrained(
         ckpt_path,
         torch_dtype=WEIGHT_DTYPE,
-        custom_pipeline=config.get("custom_pipeline"),
     ).to(DEVICE, WEIGHT_DTYPE)
 
-    _try_enable_xformers(pipe, disabled=config.get("force_disable_xformers"))
+    _try_enable_xformers(pipe)
 
     # Replay the mutator chain in the order the graph applied it.
     for op in config.get("ops", []):
@@ -1675,8 +1692,10 @@ def _build_diffusers_pipe(config):
             )
             state_dict = torch.load(ckpt_path, map_location='cpu')
             pipe.unet.load_state_dict(state_dict, strict=True)
-            _try_enable_xformers(pipe, disabled=config.get("force_disable_xformers"))
+            _try_enable_xformers(pipe)
             pipe = pipe.to(DEVICE)
+        elif op["op"] == "unique3d_unet":
+            _apply_unique3d_unet(pipe, op["config_name"])
         else:
             raise ValueError(f"unknown DIFFUSERS_PIPE op {op['op']!r}")
 
@@ -1687,8 +1706,26 @@ def resolve_diffusers_pipe(config):
     """DIFFUSERS_PIPE recipe -> live pipeline, cached across runs.
 
     Consumers call this on their pipe input before using it.
+
+    A DIFFUSERS_PIPE is not always a recipe: ten loaders still return a live
+    pipeline on the same socket, so any consumer can be handed either shape.
+    Pass those straight back rather than freezing one into a cache key --
+    freeze() would json.dumps(..., default=str) the object and cache it under
+    its repr. That guard is what lets a consumer call this unconditionally.
     """
-    return model_cache.resolve("diffusers_pipe", config, _build_diffusers_pipe)
+    if not isinstance(config, dict):
+        return config
+    kind = config.get("kind", "diffusers_pipe")
+    builder = _PIPE_BUILDERS.get(kind)
+    if builder is None:
+        raise ValueError(
+            f"DIFFUSERS_PIPE recipe of unknown kind {kind!r}; known kinds are "
+            f"{sorted(_PIPE_BUILDERS)}. A loader emitted a recipe without "
+            f"registering a builder for it.")
+    # managed(), not resolve(): a pipeline's unet/vae/text_encoder each get a
+    # ModelPatcher, so ComfyUI can evict them like any checkpoint. resolve()
+    # would hold them in a plain dict that unload_all_models() cannot reach.
+    return model_cache.managed(kind, config, builder)
 
 
 class Set_Diffusers_Pipeline_Scheduler:
@@ -1888,6 +1925,9 @@ class MVDream_Model:
         num_inference_steps, 
         elevation,
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        mvdream_pipe = resolve_diffusers_pipe(mvdream_pipe)
         if len(reference_image.shape) == 4:
             reference_image = reference_image.squeeze(0)
         if len(reference_mask.shape) == 3:
@@ -2604,6 +2644,9 @@ class Zero123Plus_Diffusion_Model:
         num_inference_steps,
     ):
         
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        zero123plus_pipe = resolve_diffusers_pipe(zero123plus_pipe)
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
 
         seed = int(seed)
@@ -2797,6 +2840,9 @@ class Era3D_MVDiffusion_Model:
         eta,
         radius,
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        era3d_pipe = resolve_diffusers_pipe(era3d_pipe)
         cfg = load_config_era3d(self.config_path_abs)
         
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
@@ -3025,31 +3071,42 @@ class Load_Unique3D_Custom_UNet:
     CATEGORY = "Comfy3D/Import|Export"
     
     def load_diffusers_unet(self, pipe, config_name):
-
-        from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.config_classes import ExprimentConfig
-        from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.custum_modules.unifield_processor import AttnConfig, ConfigurableUNet2DConditionModel
-        from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.utils import load_config
-        # Download models and configs
-        cfg_path = os.path.join(self.config_path_abs, config_name + ".yaml")
-        checkpoint_dir_path = os.path.join(self.checkpoints_dir_abs, config_name)
-        checkpoint_path = os.path.join(checkpoint_dir_path, "unet_state_dict.pth")
-
-        cfg: ExprimentConfig = load_config(ExprimentConfig, cfg_path)
-        if cfg.init_config.init_unet_path == "":
-            cfg.init_config.init_unet_path = checkpoint_dir_path
-        init_config: AttnConfig = load_config(AttnConfig, cfg.init_config)
-        configurable_unet = ConfigurableUNet2DConditionModel(init_config, WEIGHT_DTYPE)
-        _try_enable_xformers(configurable_unet)
-
-        state_dict = torch.load(checkpoint_path)
-        configurable_unet.unet.load_state_dict(state_dict, strict=False)
-        # Move unet, vae and text_encoder to device and cast to weight_dtype
-        configurable_unet.unet.to(DEVICE, dtype=WEIGHT_DTYPE)
-
-        pipe.unet = configurable_unet.unet
-        
-        cstr(f"[{self.__class__.__name__}] loaded unet ckpt from {checkpoint_path}").msg.print()
+        # A mutator, like Set_Diffusers_Pipeline_Scheduler: append to the recipe
+        # rather than building the pipeline here just to swap its unet. The op
+        # is replayed in _build_diffusers_pipe, in graph order.
+        if isinstance(pipe, dict):
+            return (model_cache.with_op(pipe, "unique3d_unet",
+                                        config_name=config_name), )
+        # Live pipeline (a loader that has not been converted yet): mutate now.
+        _apply_unique3d_unet(pipe, config_name)
         return (pipe, )
+
+
+def _apply_unique3d_unet(pipe, config_name):
+    """Swap in Unique3D's custom UNet. Shared by the node and the op replay."""
+    cls = Load_Unique3D_Custom_UNet
+    from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.config_classes import ExprimentConfig
+    from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.custum_modules.unifield_processor import AttnConfig, ConfigurableUNet2DConditionModel
+    from .Gen_3D_Modules.Unique3D.custum_3d_diffusion.trainings.utils import load_config
+
+    cfg_path = os.path.join(cls.config_path_abs, config_name + ".yaml")
+    checkpoint_dir_path = os.path.join(cls.checkpoints_dir_abs, config_name)
+    checkpoint_path = os.path.join(checkpoint_dir_path, "unet_state_dict.pth")
+
+    cfg: ExprimentConfig = load_config(ExprimentConfig, cfg_path)
+    if cfg.init_config.init_unet_path == "":
+        cfg.init_config.init_unet_path = checkpoint_dir_path
+    init_config: AttnConfig = load_config(AttnConfig, cfg.init_config)
+    configurable_unet = ConfigurableUNet2DConditionModel(init_config, WEIGHT_DTYPE)
+    _try_enable_xformers(configurable_unet)
+
+    state_dict = torch.load(checkpoint_path)
+    configurable_unet.unet.load_state_dict(state_dict, strict=False)
+    configurable_unet.unet.to(DEVICE, dtype=WEIGHT_DTYPE)
+
+    pipe.unet = configurable_unet.unet
+    cstr(f"[Load_Unique3D_Custom_UNet] loaded unet ckpt from {checkpoint_path}").msg.print()
+    return pipe
     
 class Unique3D_MVDiffusion_Model:
 
@@ -3091,6 +3148,9 @@ class Unique3D_MVDiffusion_Model:
         radius,
         preprocess_images,
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        unique3d_pipe = resolve_diffusers_pipe(unique3d_pipe)
         from .Gen_3D_Modules.Unique3D.scripts.utils import simple_image_preprocess
 
         pil_image_list = torch_imgs_to_pils(reference_image)
@@ -3349,7 +3409,6 @@ class Load_CharacterGen_MVDiffusion_Model:
         cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
-                "force_download": ("BOOLEAN", {"default": False}),
             },
         }
     
@@ -3362,9 +3421,9 @@ class Load_CharacterGen_MVDiffusion_Model:
     FUNCTION = "load_model"
     CATEGORY = "Comfy3D/Import|Export"
     
-    def load_model(self, force_download):
+    def load_model(self):
         # Download checkpoints
-        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
+        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE)
         # Load pre-trained models
         character_mv_gen_pipe = Inference2D_API(checkpoint_root_path=self.checkpoints_dir_abs, **OmegaConf.load(self.config_root_path_abs))
         
@@ -3452,7 +3511,6 @@ class Load_CharacterGen_Reconstruction_Model:
         cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
-                "force_download": ("BOOLEAN", {"default": False}),
             },
         }
     
@@ -3465,9 +3523,9 @@ class Load_CharacterGen_Reconstruction_Model:
     FUNCTION = "load_model"
     CATEGORY = "Comfy3D/Import|Export"
     
-    def load_model(self, force_download):
+    def load_model(self):
         # Download checkpoints
-        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
+        download_repo(self.default_repo_id, self.checkpoints_dir_abs, ignore_patterns=HF_DOWNLOAD_IGNORE)
         # Load pre-trained models
         character_lrm_pipe = Inference3D_API(checkpoint_root_path=self.checkpoints_dir_abs, cfg=load_config_cg3d(self.config_root_path_abs))
         
@@ -4052,6 +4110,9 @@ class Hunyuan3D_V1_MVDiffusion_Model:
         mv_guidance_scale, 
         num_inference_steps, 
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        mvdiffusion_pipe = resolve_diffusers_pipe(mvdiffusion_pipe)
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
 
         generator = torch.Generator(device=mvdiffusion_pipe.device).manual_seed(seed)
@@ -4080,7 +4141,6 @@ class Load_Hunyuan3D_V1_Reconstruction_Model:
         cls.config_root_path_abs = os.path.join(CONFIG_ROOT_PATH, cls.config_path)
         return {
             "required": {
-                "force_download": ("BOOLEAN", {"default": False}),
                 "use_lite": ("BOOLEAN", {"default": True}),
             },
         }
@@ -4094,10 +4154,10 @@ class Load_Hunyuan3D_V1_Reconstruction_Model:
     FUNCTION = "load_model"
     CATEGORY = "Comfy3D/Import|Export"
     
-    def load_model(self, force_download, use_lite):
+    def load_model(self, use_lite):
         # Download checkpoints
         ckpt_download_dir = os.path.join(CKPT_DIFFUSERS_PATH, self.default_repo_id)
-        download_repo(self.default_repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE, force=force_download)
+        download_repo(self.default_repo_id, ckpt_download_dir, ignore_patterns=HF_DOWNLOAD_IGNORE)
         # Load pre-trained models
         mv23d_ckt_path = os.path.join(ckpt_download_dir, self.checkpoints_dir)
         hunyuan3d_v1_reconstruction_model = Views2Mesh(self.config_root_path_abs, mv23d_ckt_path, DEVICE, use_lite=use_lite)
@@ -4183,6 +4243,9 @@ class Hunyuan3D_V2_DiT_Flow_Matching_Model:
         num_inference_steps,
         octree_resolution,
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        hunyuan3d_v2_i23d_pipe = resolve_diffusers_pipe(hunyuan3d_v2_i23d_pipe)
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
 
         generator = torch.Generator(device=hunyuan3d_v2_i23d_pipe.device).manual_seed(seed)
@@ -4386,6 +4449,9 @@ class TripoSG_I23D_Model:
         dense_octree_depth,
     ):
         
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        tsg_pipe = resolve_diffusers_pipe(tsg_pipe)
         single_image = torch_imgs_to_pils(reference_image)[0]
         
         with torch.inference_mode(False):
@@ -4453,6 +4519,9 @@ class TripoSG_Scribble_Model:
         dense_octree_depth,
     ):
         
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        tsg_scribble_pipe = resolve_diffusers_pipe(tsg_scribble_pipe)
         single_image = torch_imgs_to_pils(scribble_image)[0]
         
         outputs = tsg_scribble_pipe(
@@ -4503,15 +4572,17 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         return {
             "required": {
                 "generation_mode": (list(cls._MODES.keys()),),
-                "weights_format" : (["safetensors", "ckpt"],),
+                # No weights_format widget: safetensors, always. Every shipped
+                # workflow already chose it, the .ckpt is the same tensors in a
+                # pickle, and offering the choice only invites loading one.
                 "flash_vdm"      : ("BOOLEAN", {"default": True}),
             }
         }
 
     @staticmethod
-    def _ensure_weights(repo: str, subfolder: str, use_safetensors: bool):
+    def _ensure_weights(repo: str, subfolder: str):
         cls = Load_Hunyuan3D_V2_ShapeGen_Pipeline
-        ckpt_file = "model.fp16.safetensors" if use_safetensors else "model.fp16.ckpt"
+        ckpt_file = "model.fp16.safetensors"
         # One named file, not a repo snapshot. _build_pipe below calls
         # from_single_file, and config.yaml is pinned in git in this same
         # directory -- so nothing else from the repo is ever read.
@@ -4527,13 +4598,13 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         )
 
     @staticmethod
-    def _build_pipe(repo: str, subfolder: str, use_safetensors: bool, flash_vdm: bool):
-        Load_Hunyuan3D_V2_ShapeGen_Pipeline._ensure_weights(repo, subfolder, use_safetensors)
+    def _build_pipe(repo: str, subfolder: str, flash_vdm: bool):
+        Load_Hunyuan3D_V2_ShapeGen_Pipeline._ensure_weights(repo, subfolder)
 
         model_dir = os.path.join(CKPT_DIFFUSERS_PATH,
                                  f"{Load_Hunyuan3D_V2_ShapeGen_Pipeline._REPO_ID_BASE}/{repo}",
                                  subfolder)
-        ckpt = os.path.join(model_dir, "model.fp16.safetensors" if use_safetensors else "model.fp16.ckpt")
+        ckpt = os.path.join(model_dir, "model.fp16.safetensors")
         cfg  = os.path.join(model_dir, "config.yaml")
 
         pipe = Hunyuan3DDiTFlowMatchingPipeline.from_single_file(
@@ -4541,11 +4612,11 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
             config_path=cfg,
             device=DEVICE,
             dtype=WEIGHT_DTYPE,
-            use_safetensors=use_safetensors,
+            use_safetensors=True,
             from_pretrained_kwargs={
                 "model_path": f"{Load_Hunyuan3D_V2_ShapeGen_Pipeline._REPO_ID_BASE}/{repo}",
                 "subfolder": subfolder,
-                "use_safetensors": use_safetensors,
+                "use_safetensors": True,
             },
         )
 
@@ -4554,12 +4625,25 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
 
         return pipe.to(DEVICE, WEIGHT_DTYPE)
 
-    def load(self, generation_mode, weights_format, flash_vdm):
-        repo, subfolder, def_steps = self._MODES[generation_mode]
-        use_safe = (weights_format == "safetensors")
-        pipe = self._build_pipe(repo, subfolder, use_safe, flash_vdm)
-        pipe.num_inference_steps = def_steps
-        return (pipe,)
+    def load(self, generation_mode, flash_vdm):
+        repo, subfolder, _def_steps = self._MODES[generation_mode]
+        # Download now, build later: see _build_hunyuan3d_v2_shapegen.
+        self._ensure_weights(repo, subfolder)
+        return (model_cache.recipe(
+            "hunyuan3d_v2_shapegen",
+            generation_mode=generation_mode,
+            flash_vdm=flash_vdm,
+        ),)
+
+
+@_pipe_builder("hunyuan3d_v2_shapegen")
+def _build_hunyuan3d_v2_shapegen(config):
+    """Materialize a hunyuan3d_v2_shapegen recipe. Only on a cache miss."""
+    cls = Load_Hunyuan3D_V2_ShapeGen_Pipeline
+    repo, subfolder, def_steps = cls._MODES[config["generation_mode"]]
+    pipe = cls._build_pipe(repo, subfolder, config["flash_vdm"])
+    pipe.num_inference_steps = def_steps
+    return pipe
     
 class Load_Hunyuan3D_V2_TexGen_Pipeline: 
 
@@ -4616,6 +4700,7 @@ class Load_Hunyuan3D_V2_TexGen_Pipeline:
         ),)
 
 
+@_pipe_builder("hunyuan3d_v2_texgen")
 def _build_hunyuan3d_v2_texgen(config):
     """Materialize a hunyuan3d_v2_texgen recipe. Called only on a cache miss."""
     local_repo_dir = os.path.join(CKPT_DIFFUSERS_PATH, config["repo_id"])
@@ -4632,10 +4717,7 @@ def resolve_hunyuan3d_v2_texgen(config):
     Accepts an already-built pipeline unchanged, so a graph saved before this
     node emitted recipes keeps working.
     """
-    if not isinstance(config, dict):
-        return config
-    return model_cache.resolve("hunyuan3d_v2_texgen", config,
-                               _build_hunyuan3d_v2_texgen)
+    return resolve_diffusers_pipe(config)
 
 class Hunyuan3D_V2_Paint_Model_Turbo_MV:
     """
@@ -4772,6 +4854,9 @@ class Hunyuan3D_V2_ShapeGen_MV:
         num_inference_steps=5,
         octree_resolution=256
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        shapegen_pipe = resolve_diffusers_pipe(shapegen_pipe)
         if not isinstance(images, list) or len(images) == 0:
             raise Exception("[Hunyuan3D_V2_ShapeGen_MV] 'images' must be a non-empty list of PIL images")
 
@@ -4847,14 +4932,26 @@ class Load_StableGen_Trellis_Pipeline:
         )
 
     def load(self, model_name, dinov2_model, use_fp16, attn_backend, sparse_backend, spconv_algo, smooth_k):
-        repo, ss_steps, slat_steps = self._MODES[model_name]
-        
-        pipe = self.__class__._build_pipe(repo, dinov2_model, use_fp16, attn_backend, sparse_backend, spconv_algo, smooth_k)
-        # Store default steps
-        pipe.default_ss_steps = ss_steps
-        pipe.default_slat_steps = slat_steps
-        
-        return (pipe,)
+        # Recipe, not a live pipeline -- see Load_PartCrafter_Pipeline.load.
+        return (model_cache.recipe(
+            "stablegen_trellis",
+            model_name=model_name, dinov2_model=dinov2_model, use_fp16=use_fp16,
+            attn_backend=attn_backend, sparse_backend=sparse_backend,
+            spconv_algo=spconv_algo, smooth_k=smooth_k),)
+
+
+@_pipe_builder("stablegen_trellis")
+def _build_stablegen_trellis(config):
+    """Materialize a stablegen_trellis recipe. Only on a cache miss."""
+    cls = Load_StableGen_Trellis_Pipeline
+    repo, ss_steps, slat_steps = cls._MODES[config["model_name"]]
+    pipe = cls._build_pipe(
+        repo, config["dinov2_model"], config["use_fp16"], config["attn_backend"],
+        config["sparse_backend"], config["spconv_algo"], config["smooth_k"])
+    # Defaults the consumer reads off the pipeline.
+    pipe.default_ss_steps = ss_steps
+    pipe.default_slat_steps = slat_steps
+    return pipe
 
 
 class Load_StableGen_StableX_Pipeline:
@@ -4888,9 +4985,17 @@ class Load_StableGen_StableX_Pipeline:
         )
 
     def load(self, model_name, use_fp16):
-        repo = self._MODES[model_name]
-        pipe = self.__class__._build_pipe(repo, use_fp16)
-        return (pipe,)
+        # Recipe, not a live pipeline -- see Load_PartCrafter_Pipeline.load.
+        return (model_cache.recipe(
+            "stablegen_stablex", model_name=model_name, use_fp16=use_fp16),)
+
+
+@_pipe_builder("stablegen_stablex")
+def _build_stablegen_stablex(config):
+    """Materialize a stablegen_stablex recipe. Only on a cache miss."""
+    cls = Load_StableGen_StableX_Pipeline
+    repo = cls._MODES[config["model_name"]]
+    return cls._build_pipe(repo, config["use_fp16"])
 
 
 class StableGen_Trellis_Image_To_3D:
@@ -4932,6 +5037,9 @@ class StableGen_Trellis_Image_To_3D:
         slat_sampling_steps=12,
         mesh_simplify=0.95
     ):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        trellis_pipe = resolve_diffusers_pipe(trellis_pipe)
         if isinstance(images, torch.Tensor):
             images = torch_imgs_to_pils(images)
         
@@ -5023,6 +5131,9 @@ class StableGen_StableX_Process_Image:
 
     @torch.no_grad()
     def run(self, stablex_pipe, image, processing_resolution=2048, controlnet_strength=1.0, seed=42):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        stablex_pipe = resolve_diffusers_pipe(stablex_pipe)
         if image.dim() == 4:
             image = image.squeeze(0)
         
@@ -5076,31 +5187,43 @@ class Load_MVAdapter_IG2MV_Pipeline:
         }
         
     @classmethod
-    def load(cls, base_model, vae_model, adapter_path, scheduler, num_views, 
+    def load(cls, base_model, vae_model, adapter_path, scheduler, num_views,
             use_fp16, use_mmgp, lora_model=""):
-        
-        dtype = torch.float16 if use_fp16 else torch.float32
-        vae_model = None if vae_model == "None" else vae_model
-        lora_model = None if not lora_model else lora_model
-        
-        # prepare the parameters for the pipeline
-        pipeline_kwargs = {
-            "base_model": base_model,
-            "vae_model": vae_model,
-            "lora_model": lora_model,
-            "adapter_path": adapter_path,
-            "scheduler": scheduler,
-            "num_views": num_views,
-            "device": DEVICE_STR,
-            "dtype": dtype,
-            "use_mmgp": use_mmgp,
-            "adapter_local_path": cls.CKPT_MVADAPTER_PATH
-        }
-        
-        pipe = mvadapter_prepare_pipeline(**pipeline_kwargs)
-        
-        print("MV-Adapter IG2MV pipeline loaded successfully")
-        return (pipe,)
+        # Recipe, not a live pipeline -- see Load_PartCrafter_Pipeline.load.
+        return (model_cache.recipe(
+            "mvadapter_ig2mv",
+            base_model=base_model, vae_model=vae_model, lora_model=lora_model,
+            adapter_path=adapter_path, scheduler=scheduler, num_views=num_views,
+            use_fp16=use_fp16, use_mmgp=use_mmgp),)
+
+
+def _mvadapter_kwargs(config, cls):
+    """Recipe fields -> mvadapter_prepare_*_pipeline kwargs.
+
+    dtype and the None-for-"None" fixups live here rather than in the node, so
+    the recipe stays JSON-safe: torch.float16 is not serialisable, use_fp16 is.
+    """
+    return {
+        "base_model": config["base_model"],
+        "vae_model": None if config["vae_model"] == "None" else config["vae_model"],
+        "lora_model": config["lora_model"] or None,
+        "adapter_path": config["adapter_path"],
+        "scheduler": config["scheduler"],
+        "num_views": config["num_views"],
+        "device": DEVICE_STR,
+        "dtype": torch.float16 if config["use_fp16"] else torch.float32,
+        "use_mmgp": config["use_mmgp"],
+        "adapter_local_path": cls.CKPT_MVADAPTER_PATH,
+    }
+
+
+@_pipe_builder("mvadapter_ig2mv")
+def _build_mvadapter_ig2mv(config):
+    """Materialize an mvadapter_ig2mv recipe. Only on a cache miss."""
+    kwargs = _mvadapter_kwargs(config, Load_MVAdapter_IG2MV_Pipeline)
+    pipe = mvadapter_prepare_pipeline(**kwargs)
+    print("MV-Adapter IG2MV pipeline loaded successfully")
+    return pipe
 
 class MVAdapter_IG2MV:
     """Generate multi-view images from single image and 3D mesh"""
@@ -5135,6 +5258,9 @@ class MVAdapter_IG2MV:
             num_inference_steps, guidance_scale, reference_conditioning_scale,
             height, width, seed, remove_background, lora_scale=1.0):
         
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        mvadapter_pipe = resolve_diffusers_pipe(mvadapter_pipe)
         if isinstance(reference_image, torch.Tensor):
             reference_images = torch_imgs_to_pils(reference_image)
             reference_image = reference_images[0]
@@ -5192,36 +5318,28 @@ class Load_MVAdapter_TG2MV_Pipeline:
         }
 
     @classmethod
-    def load(cls, base_model, vae_model, adapter_path, scheduler, num_views, 
+    def load(cls, base_model, vae_model, adapter_path, scheduler, num_views,
              use_fp16, use_mmgp, lora_model=""):
-        
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        dtype = torch.float16 if use_fp16 else torch.float32
-        vae_model = None if vae_model == "None" else vae_model
-        lora_model = None if not lora_model else lora_model
-        
-        pipeline_kwargs = {
-            "base_model": base_model,
-            "vae_model": vae_model,
-            "lora_model": lora_model,
-            "adapter_path": adapter_path,
-            "scheduler": scheduler,
-            "num_views": num_views,
-            "device": DEVICE_STR,
-            "dtype": dtype,
-            "use_mmgp": use_mmgp,
-            "adapter_local_path": cls.CKPT_MVADAPTER_PATH
-        }
-        
-        try:
-            pipe = mvadapter_prepare_tg2mv_pipeline(**pipeline_kwargs)
-            print("MV-Adapter TG2MV pipeline loaded successfully")
-            return (pipe,)
-            
-        except Exception as e:
-            raise e
+        # Recipe, not a live pipeline -- see Load_PartCrafter_Pipeline.load.
+        return (model_cache.recipe(
+            "mvadapter_tg2mv",
+            base_model=base_model, vae_model=vae_model, lora_model=lora_model,
+            adapter_path=adapter_path, scheduler=scheduler, num_views=num_views,
+            use_fp16=use_fp16, use_mmgp=use_mmgp),)
+
+
+@_pipe_builder("mvadapter_tg2mv")
+def _build_mvadapter_tg2mv(config):
+    """Materialize an mvadapter_tg2mv recipe. Only on a cache miss."""
+    # Was `if torch.cuda.is_available(): torch.cuda.empty_cache()`. comfy's
+    # version also covers MPS/XPU and syncs first. Imported here, not at module
+    # scope, to keep this module importable outside ComfyUI.
+    import comfy.model_management
+    comfy.model_management.soft_empty_cache()
+    kwargs = _mvadapter_kwargs(config, Load_MVAdapter_TG2MV_Pipeline)
+    pipe = mvadapter_prepare_tg2mv_pipeline(**kwargs)
+    print("MV-Adapter TG2MV pipeline loaded successfully")
+    return pipe
 
 
 class MVAdapter_TG2MV:
@@ -5254,6 +5372,9 @@ class MVAdapter_TG2MV:
     def run(self, mvadapter_tg2mv_pipe, mesh_path, prompt, negative_prompt, num_views,
             num_inference_steps, guidance_scale, height, width, seed, lora_scale=1.0):
         
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        mvadapter_tg2mv_pipe = resolve_diffusers_pipe(mvadapter_tg2mv_pipe)
         if not mesh_path or not os.path.exists(mesh_path):
             raise ValueError(f"Mesh path does not exist: {mesh_path}")
         
@@ -5450,8 +5571,21 @@ class Load_Hunyuan3D_21_ShapeGen_Pipeline:
     RETURN_NAMES = ("shapegen_pipe",)
     FUNCTION = "load"
 
-    _REPO_ID_BASE = "tencent"
-    _REPO_NAME = "Hunyuan3D-2.1"
+    # tencent/Hunyuan3D-2.1 ships this checkpoint only as a .ckpt pickle.
+    # niknah/Hunyuan3D-2.1-safetensors is a straight conversion of it, in the
+    # same directory layout, and publishes the ckpt2safetensors.py that made it.
+    # Verified against the safetensors header: 1601 tensors, all F16, 7.37 GB --
+    # byte-identical in size to tencent's .ckpt, with the same key names.
+    #
+    # It is a single file holding all three sub-models, split by key prefix and
+    # reassembled in pipelines.py: model 6.10 GB, vae 0.66 GB, conditioner
+    # 0.61 GB. The separate hunyuan3d-vae-v2-1/model.fp16.ckpt this used to
+    # fetch was never read -- 0.66 GB downloaded and ignored.
+    #
+    # Third-party: an individual's repo, not tencent's. Mirror it under an
+    # account you control if that matters more than the pickle does.
+    _REPO_ID = "niknah/Hunyuan3D-2.1-safetensors"
+    _CKPT = "hunyuan3d-dit-v2-1/model.fp16.safetensors"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -5464,28 +5598,29 @@ class Load_Hunyuan3D_21_ShapeGen_Pipeline:
     @staticmethod
     def _ensure_weights(subfolder: str):
         cls = Load_Hunyuan3D_21_ShapeGen_Pipeline
-        # "." in the repo name would nest a directory level on disk.
-        safe_repo_name = cls._REPO_NAME.replace(".", "_")
         return download_files(
-            f"{cls._REPO_ID_BASE}/{cls._REPO_NAME}",
-            [
-                "hunyuan3d-dit-v2-1/model.fp16.ckpt",
-                "hunyuan3d-vae-v2-1/model.fp16.ckpt",
-            ],
-            CKPT_DIFFUSERS_PATH, f"{cls._REPO_ID_BASE}/{safe_repo_name}",
+            cls._REPO_ID,
+            [cls._CKPT],
+            CKPT_DIFFUSERS_PATH, "tencent/Hunyuan3D-2_1",
         )
 
     def load(self, subfolder):
-        base_dir = self._ensure_weights(subfolder)
-        
-        pipeline = Hunyuan3DDiTFlowMatchingPipeline_2_1.from_pretrained(
-            base_dir,
-            subfolder=subfolder,
-            use_safetensors=False,
-            device="cuda",
-        )
-        
-        return (pipeline,)
+        # Recipe, not a live pipeline -- see Load_PartCrafter_Pipeline.load.
+        self._ensure_weights(subfolder)
+        return (model_cache.recipe("hunyuan3d_21_shapegen", subfolder=subfolder),)
+
+
+@_pipe_builder("hunyuan3d_21_shapegen")
+def _build_hunyuan3d_21_shapegen(config):
+    """Materialize a hunyuan3d_21_shapegen recipe. Only on a cache miss."""
+    subfolder = config["subfolder"]
+    base_dir = Load_Hunyuan3D_21_ShapeGen_Pipeline._ensure_weights(subfolder)
+    return Hunyuan3DDiTFlowMatchingPipeline_2_1.from_pretrained(
+        base_dir,
+        subfolder=subfolder,
+        use_safetensors=True,
+        device=DEVICE,
+    )
 
 class Load_Hunyuan3D_21_TexGen_Pipeline:
 
@@ -5503,7 +5638,6 @@ class Load_Hunyuan3D_21_TexGen_Pipeline:
     _REPO_NAME = "Hunyuan3D-2.1"
 
     # Pipeline cache: { (max_view, res, mmgp) : pipeline }
-    _cache = {}
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -5535,43 +5669,46 @@ class Load_Hunyuan3D_21_TexGen_Pipeline:
 
 
     def load(self, max_num_view, resolution, enable_mmgp):
-        cache_key = (max_num_view, resolution, enable_mmgp)
+        # No private cache: model_cache dedupes on the frozen recipe, which is
+        # what the old (max_num_view, resolution, enable_mmgp) key was doing by
+        # hand -- and its dict was invisible to ComfyUI's memory manager.
+        self._ensure_weights()
+        return (model_cache.recipe(
+            "hunyuan3d_21_texgen",
+            max_num_view=max_num_view, resolution=resolution,
+            enable_mmgp=enable_mmgp),)
 
-        # Check cache first
-        if cache_key in self._cache:
-            print(f"[TexGen-Loader] Using cached pipeline {cache_key}")
-            return (self._cache[cache_key],)
 
-        base_dir = self._ensure_weights()
-        
-        # Configure pipeline
-        conf = Hunyuan3DPaintConfig_2_1(max_num_view=max_num_view, resolution=resolution)
-        conf.multiview_cfg_path = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
-        conf.custom_pipeline = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/hunyuanpaintpbr")
+@_pipe_builder("hunyuan3d_21_texgen")
+def _build_hunyuan3d_21_texgen(config):
+    """Materialize a hunyuan3d_21_texgen recipe. Only on a cache miss."""
+    Load_Hunyuan3D_21_TexGen_Pipeline._ensure_weights()
 
-        pipeline = Hunyuan3DPaintPipeline_2_1(conf)
-        
-        if enable_mmgp:
-            try:
-                # Imported here, not at module scope: importing mmgp replaces
-                # safetensors.safe_open process-wide, which breaks every
-                # transformers safetensors load. See shared_utils/mmgp_compat.
-                from mmgp import offload, profile_type
-                from .shared_utils.mmgp_compat import keep_safe_open_compatible
-                keep_safe_open_compatible()
+    conf = Hunyuan3DPaintConfig_2_1(max_num_view=config["max_num_view"],
+                                    resolution=config["resolution"])
+    conf.multiview_cfg_path = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
+    conf.custom_pipeline = os.path.join(NODES_PATH, "Gen_3D_Modules/Hunyuan3D_2_1/hy3dpaint/hunyuanpaintpbr")
 
-                core_pipe = pipeline.models["multiview_model"].pipeline
-                offload.profile(core_pipe, profile_type.LowRAM_LowVRAM)
-                print("mmgp optimization enabled for texture pipeline")
-            except Exception as e:
-                print(f"[mmgp] Failed to apply optimization for texture: {e}")
-        else:
-            print("mmgp optimization disabled for texture pipeline")
-        
-        # Save to cache and return
-        self._cache[cache_key] = pipeline
-        print(f"[TexGen-Loader] Cached new pipeline {cache_key}")
-        return (pipeline,)
+    pipeline = Hunyuan3DPaintPipeline_2_1(conf)
+
+    if config["enable_mmgp"]:
+        try:
+            # Imported here, not at module scope: importing mmgp replaces
+            # safetensors.safe_open process-wide, which breaks every
+            # transformers safetensors load. See shared_utils/mmgp_compat.
+            from mmgp import offload, profile_type
+            from .shared_utils.mmgp_compat import keep_safe_open_compatible
+            keep_safe_open_compatible()
+
+            core_pipe = pipeline.models["multiview_model"].pipeline
+            offload.profile(core_pipe, profile_type.LowRAM_LowVRAM)
+            print("mmgp optimization enabled for texture pipeline")
+        except Exception as e:
+            print(f"[mmgp] Failed to apply optimization for texture: {e}")
+    else:
+        print("mmgp optimization disabled for texture pipeline")
+
+    return pipeline
 
 class Hunyuan3D_21_ShapeGen:
     """Hunyuan3D-2.1 Shape Generation with automatic pipeline cleanup"""
@@ -5598,6 +5735,9 @@ class Hunyuan3D_21_ShapeGen:
 
     @torch.no_grad()
     def generate(self, shapegen_pipe, image, seed, steps, guidance_scale, octree_resolution, remove_background, auto_cleanup):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        shapegen_pipe = resolve_diffusers_pipe(shapegen_pipe)
         pil_image = torch_imgs_to_pils(image)[0].convert("RGBA")
         
         if remove_background or pil_image.mode == "RGB":
@@ -5670,6 +5810,9 @@ class Hunyuan3D_21_TexGen:
 
     @torch.no_grad()
     def generate(self, texgen_pipe, mesh_path, image, create_pbr, use_remesh):
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        texgen_pipe = resolve_diffusers_pipe(texgen_pipe)
         if not mesh_path or not os.path.exists(mesh_path):
             raise Exception(f"Mesh file not found: {mesh_path}")
 
@@ -5803,12 +5946,20 @@ class Load_PartCrafter_Pipeline:
         )
 
     def load(self):
-        base_dir = self._ensure_weights()
-        
-        pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
-        
-        print(f"PartCrafter pipeline loaded")
-        return (pipeline,)
+        # Fetch here so this node reports a network failure, but emit a recipe:
+        # a live pipeline holds module objects and cannot cross comfy-env's
+        # worker boundary. resolve_diffusers_pipe builds it in-process.
+        self._ensure_weights()
+        return (model_cache.recipe("partcrafter"),)
+
+
+@_pipe_builder("partcrafter")
+def _build_partcrafter(config):
+    """Materialize a partcrafter recipe. Called only on a cache miss."""
+    base_dir = Load_PartCrafter_Pipeline._ensure_weights()
+    pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
+    print("PartCrafter pipeline loaded")
+    return pipeline
 
 
 class PartCrafter_Generate:
@@ -5842,6 +5993,9 @@ class PartCrafter_Generate:
                  guidance_scale, max_num_expanded_coords, use_flash_decoder, remove_background, sampling_version):
         
         # Convert image
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        partcrafter_pipe = resolve_diffusers_pipe(partcrafter_pipe)
         pil_image = torch_imgs_to_pils(image)[0]
         
         # Remove background if needed
@@ -5992,12 +6146,18 @@ class Load_PartCrafter_Scene_Pipeline:
         )
 
     def load(self):
-        base_dir = self._ensure_weights()
-        
-        pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
-        
-        print(f"PartCrafter-Scene pipeline loaded")
-        return (pipeline,)
+        # Recipe, not a live pipeline -- see Load_PartCrafter_Pipeline.load.
+        self._ensure_weights()
+        return (model_cache.recipe("partcrafter_scene"),)
+
+
+@_pipe_builder("partcrafter_scene")
+def _build_partcrafter_scene(config):
+    """Materialize a partcrafter_scene recipe. Only on a cache miss."""
+    base_dir = Load_PartCrafter_Scene_Pipeline._ensure_weights()
+    pipeline = PartCrafterPipeline.from_pretrained(base_dir).to(DEVICE, WEIGHT_DTYPE)
+    print("PartCrafter-Scene pipeline loaded")
+    return pipeline
 
 
 class PartCrafter_Generate:
@@ -6031,6 +6191,9 @@ class PartCrafter_Generate:
                  guidance_scale, max_num_expanded_coords, use_flash_decoder, remove_background, sampling_version):
         
         # Convert image
+        # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
+        # pipeline; resolve_diffusers_pipe passes the latter through.
+        partcrafter_pipe = resolve_diffusers_pipe(partcrafter_pipe)
         pil_image = torch_imgs_to_pils(image)[0]
         
         # Remove background if needed

@@ -386,8 +386,6 @@
       "widgets_values": [
         "Unique3DImage2MVCustomPipeline",
         "MrForExample/Unique3D",
-        "",
-        false,
         "image2mvimage"
       ]
     }

@@ -118,6 +118,40 @@ def with_op(config, op, **fields):
 # before. Only the ownership of its VRAM changes.
 
 
+def _patch_target(module):
+    """Adapt a module so ComfyUI's ModelPatcher can own it.
+
+    ModelPatcher assigns `model.device` while loading and unpatching
+    (model_patcher.py:1103, :1157). diffusers' ModelMixin exposes `device` as a
+    read-only property reporting the first parameter's device, so the
+    assignment raises "property 'device' ... has no setter" and the load dies
+    half-done. Wrapping puts a plain settable attribute in the way; `.to()`,
+    `.state_dict()` and the parameters still belong to the real module, which
+    is all ModelPatcher touches otherwise.
+
+    Modules that already accept the assignment are returned untouched, so this
+    costs nothing for the pack's own nn.Modules.
+    """
+    import torch
+
+    try:
+        module.device = getattr(module, "device", None)
+        return module
+    except AttributeError:
+        pass
+
+    class _PatchTarget(torch.nn.Module):
+        def __init__(self, inner):
+            super().__init__()
+            self.inner = inner
+            self.device = None
+
+        def forward(self, *a, **k):
+            return self.inner(*a, **k)
+
+    return _PatchTarget(module)
+
+
 def _wrap(model, load_device, offload_device):
     """Wrap a module in a ModelPatcher.
 
@@ -133,18 +167,52 @@ def _wrap(model, load_device, offload_device):
 
 
 
+def _module_components(obj):
+    """The nn.Modules inside `obj`, by name.
+
+    A diffusers pipeline is not itself an nn.Module and has no state_dict, so
+    ModelPatcher cannot size it -- but it holds several that can be wrapped
+    individually. `.components` is diffusers' own accessor and also returns the
+    tokenizer, scheduler and feature_extractor, which are not modules; those are
+    skipped. Wrapping per component is better than one patcher would be anyway:
+    ComfyUI can evict a text encoder while the unet stays resident.
+    """
+    import torch
+
+    comps = getattr(obj, "components", None)
+    if isinstance(comps, dict):
+        found = {k: v for k, v in comps.items() if isinstance(v, torch.nn.Module)}
+        if found:
+            return found
+    # Not a diffusers pipeline: take whatever modules it holds as attributes.
+    try:
+        attrs = vars(obj)
+    except TypeError:
+        return {}
+    return {k: v for k, v in attrs.items() if isinstance(v, torch.nn.Module)}
+
+
 def managed(kind, config, builder, post_load=None):
-    """Build once on CPU, cache the ModelPatcher, hand ComfyUI the VRAM decision.
+    """Build once, hand ComfyUI the VRAM, return the live object.
 
-    Returns the live model, so callers and node sockets are unchanged. The
-    builder MUST leave the model on CPU -- a builder that ends in `.to(DEVICE)`
-    defeats the whole point, because the weights are already in VRAM before
-    ComfyUI is asked whether there is room.
+    Caches ModelPatchers, not models. A plain dict of models is invisible to
+    ComfyUI: unload_all_models() -- what the Free memory button calls -- cannot
+    reach it, so the weights sit in VRAM for the life of the process. Wrapped,
+    ComfyUI can evict them to make room, exactly as it does for a checkpoint.
 
-    `post_load(model, device)` runs once, after the first GPU load, for setup
-    that needs to allocate on the target device -- InstantMesh's FlexiCubes
-    geometry is the case this exists for. It cannot go in the builder because
-    the builder runs on CPU.
+    Handles three shapes:
+      * an nn.Module          -> one patcher
+      * a pipeline of modules -> one patcher per component, all loaded together
+      * anything else         -> plain cache, logged, VRAM off the books
+
+    Callers and node sockets are unchanged: this returns whatever the builder
+    returned. The builder SHOULD leave weights on CPU -- one that ends in
+    `.to(DEVICE)` still works, but it has already spent the VRAM before ComfyUI
+    was asked whether there was room.
+
+    `post_load(obj, device)` runs once after the first GPU load, for setup that
+    must allocate on the target device -- InstantMesh's FlexiCubes geometry is
+    the case it exists for; it cannot go in a builder that runs on CPU.
     """
     import torch
     import comfy.model_management
@@ -152,39 +220,50 @@ def managed(kind, config, builder, post_load=None):
     key = (kind, freeze(config))
 
     with _LOCK:
-        patcher = _PATCHERS.get(key)
+        entry = _PATCHERS.get(key)
 
-    if patcher is None:
-        model = builder(config)
+    if entry is None:
+        obj = builder(config)
 
-        if not isinstance(model, torch.nn.Module) or not hasattr(model, "state_dict"):
-            # Not wrappable. Fall back to the plain cache so behaviour is
-            # unchanged, but say so -- this model's VRAM stays off the books.
-            log.info("[Comfy3D] %s is not an nn.Module; caching unmanaged", kind)
-            return resolve(kind, config, lambda _cfg: model)
+        if isinstance(obj, torch.nn.Module):
+            targets = {"": obj}
+        else:
+            targets = _module_components(obj)
+
+        if not targets:
+            log.info("[Comfy3D] %s holds no nn.Module; caching unmanaged", kind)
+            return resolve(kind, config, lambda _cfg: obj)
 
         load_device = comfy.model_management.get_torch_device()
         offload_device = comfy.model_management.unet_offload_device()
 
-        try:
-            patcher = _wrap(model, load_device, offload_device)
-        except Exception as exc:
-            log.warning("[Comfy3D] %s could not be wrapped in a ModelPatcher (%s); "
-                        "caching unmanaged", kind, exc)
-            return resolve(kind, config, lambda _cfg: model)
+        patchers = []
+        for name, module in targets.items():
+            try:
+                patchers.append(_wrap(_patch_target(module),
+                                     load_device, offload_device))
+            except Exception as exc:
+                log.warning("[Comfy3D] %s: component %r could not be wrapped "
+                            "(%s); its VRAM stays off the books",
+                            kind, name or kind, exc)
+
+        if not patchers:
+            return resolve(kind, config, lambda _cfg: obj)
 
         with _LOCK:
-            patcher = _PATCHERS.setdefault(key, patcher)
-        log.info("[Comfy3D] built %s on CPU, now ComfyUI-managed", kind)
+            entry = _PATCHERS.setdefault(key, (obj, patchers))
+        log.info("[Comfy3D] %s is ComfyUI-managed (%d component(s))",
+                 kind, len(entry[1]))
 
+    obj, patchers = entry
     # Every call, not just on a miss: another node may have offloaded us since.
-    comfy.model_management.load_models_gpu([patcher])
+    comfy.model_management.load_models_gpu(patchers)
 
     if post_load is not None and key not in _POST_LOADED:
-        post_load(patcher.model, patcher.load_device)
+        post_load(obj, patchers[0].load_device)
         _POST_LOADED.add(key)
 
-    return patcher.model
+    return obj
 
 
 def offload(kind=None):
@@ -197,7 +276,10 @@ def offload(kind=None):
     import comfy.model_management
 
     with _LOCK:
-        targets = [p for k, p in _PATCHERS.items() if kind is None or k[0] == kind]
+        targets = [pat
+                   for k, (_obj, patchers) in _PATCHERS.items()
+                   if kind is None or k[0] == kind
+                   for pat in patchers]
 
     for patcher in targets:
         patcher.unpatch_model(device_to=patcher.offload_device)
