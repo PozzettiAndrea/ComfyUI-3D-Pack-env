@@ -37,15 +37,27 @@ from diffusers.utils import logging as diffusers_logging
 diffusers_logging.set_verbosity(50)
 
 
+def _default_device():
+    """ComfyUI's chosen device, or a sane guess when imported standalone.
+
+    Kept behind a try so this module stays importable outside ComfyUI, and
+    resolved at call time so --cpu / --cuda-device are honoured.
+    """
+    try:
+        import comfy.model_management
+        return str(comfy.model_management.get_torch_device())
+    except Exception:
+        return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 class Hunyuan3DPaintConfig:
     def __init__(self, max_num_view, resolution):
-        self.device = "cuda"
+        self.device = _default_device()
 
         self.multiview_cfg_path = "cfgs/hunyuan-paint-pbr.yaml"
         self.custom_pipeline = "hunyuanpaintpbr"
         self.multiview_pretrained_path = "tencent/Hunyuan3D-2.1"
         self.dino_ckpt_path = "facebook/dinov2-giant"
-        self.realesrgan_ckpt_path = "/home/ubuntu/oldrigger/AutoRigger/auto_rigger/models/ComfyUI/custom_nodes/ComfyUI-3D-Pack/Checkpoints/Diffusers/tencent/Hunyuan3D-2.1/RealESRGAN_x4plus.pth"
 
         self.raster_mode = "cr"
         self.bake_mode = "back_sample"

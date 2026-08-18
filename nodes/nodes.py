@@ -1471,8 +1471,13 @@ class Load_Triplane_Gaussian_Transformers:
         ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
             
         cfg.system.weights=ckpt_path
-        tgs_model = TGS(cfg=cfg.system).to(device)
-        
+
+        def build(_config):
+            # On CPU: the ModelPatcher decides when this reaches the GPU.
+            return TGS(cfg=cfg.system)
+
+        tgs_model = model_cache.managed("tgs", {"ckpt": ckpt_path}, build)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
 
         return (tgs_model, )
@@ -1870,20 +1875,22 @@ class Load_Large_Multiview_Gaussian_Model:
     
     def load_LGM(self, model_name, lgb_config):
 
-        lgm_model = LargeMultiviewGaussianModel(config_defaults[lgb_config])
-        
         ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
-            
-        if ckpt_path.endswith('safetensors'):
-            ckpt = load_file(ckpt_path, device='cpu')
-        else:
-            ckpt = torch.load(ckpt_path, map_location='cpu')
 
-        lgm_model.load_state_dict(ckpt, strict=False)
+        def build(_config):
+            model = LargeMultiviewGaussianModel(config_defaults[lgb_config])
+            if ckpt_path.endswith('safetensors'):
+                ckpt = load_file(ckpt_path, device='cpu')
+            else:
+                ckpt = torch.load(ckpt_path, map_location='cpu')
+            model.load_state_dict(ckpt, strict=False)
+            # .half() on CPU: casting before the patcher sees the model means it
+            # measures the size that will actually be resident.
+            return model.half().eval()
 
-        lgm_model = lgm_model.half().to(DEVICE)
-        lgm_model.eval()
-        
+        lgm_model = model_cache.managed(
+            "lgm", {"ckpt": ckpt_path, "config": lgb_config}, build)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
         
         return (lgm_model, )
@@ -2031,14 +2038,17 @@ class Load_TripoSR_Model:
         
         ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
 
-        tsr_model = TSR.from_pretrained(
-            weight_path=ckpt_path,
-            config_path=self.config_path_abs
-        )
-        
-        tsr_model.renderer.set_chunk_size(chunk_size)
-        tsr_model.to(DEVICE)
-        
+        def build(_config):
+            model = TSR.from_pretrained(
+                weight_path=ckpt_path,
+                config_path=self.config_path_abs
+            )
+            model.renderer.set_chunk_size(chunk_size)
+            return model
+
+        tsr_model = model_cache.managed(
+            "triposr", {"ckpt": ckpt_path, "chunk_size": chunk_size}, build)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
         
         return (tsr_model, )
@@ -2129,14 +2139,15 @@ class Load_SF3D_Model:
         
         ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
 
-        sf3d_model = SF3D.from_pretrained(
-            config_path=self.config_path_abs,
-            weight_path=ckpt_path
-        )
-        
-        sf3d_model.eval()
-        sf3d_model.to(DEVICE)
-        
+        def build(_config):
+            model = SF3D.from_pretrained(
+                config_path=self.config_path_abs,
+                weight_path=ckpt_path
+            )
+            return model.eval()
+
+        sf3d_model = model_cache.managed("sf3d", {"ckpt": ckpt_path}, build)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
         
         return (sf3d_model, )
@@ -2442,9 +2453,14 @@ class Load_Convolutional_Reconstruction_Model:
         ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
         
         crm_conf = json.load(open(self.config_path_abs))
-        crm_model = ConvolutionalReconstructionModel(crm_conf).to(DEVICE)
-        crm_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
-        
+
+        def build(_config):
+            model = ConvolutionalReconstructionModel(crm_conf)
+            model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
+            return model
+
+        crm_model = model_cache.managed("crm", {"ckpt": ckpt_path}, build)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
         
         return (crm_model, )
@@ -2587,18 +2603,25 @@ class Load_InstantMesh_Reconstruction_Model:
         config_path = os.path.join(self.config_root_path_abs, config_name)
         config = OmegaConf.load(config_path)
 
-        lrm_model = instantiate_from_config(config.model_config)
         ckpt_path = resume_or_download_model_from_hf(self.checkpoints_dir_abs, self.default_repo_id, model_name, self.__class__.__name__)
 
-        state_dict = torch.load(ckpt_path, map_location='cpu')['state_dict']
-        state_dict = {k[14:]: v for k, v in state_dict.items() if k.startswith('lrm_generator.')}
-        lrm_model.load_state_dict(state_dict, strict=True)
+        def build(_config):
+            model = instantiate_from_config(config.model_config)
+            state_dict = torch.load(ckpt_path, map_location='cpu')['state_dict']
+            state_dict = {k[14:]: v for k, v in state_dict.items() if k.startswith('lrm_generator.')}
+            model.load_state_dict(state_dict, strict=True)
+            return model.eval()
 
-        lrm_model = lrm_model.to(DEVICE)
-        if is_flexicubes:
-            lrm_model.init_flexicubes_geometry(DEVICE, fovy=30.0)
-        lrm_model = lrm_model.eval()
-        
+        def post_load(model, device):
+            # FlexiCubes allocates its tetrahedral grid on the target device, so
+            # it has to wait until the weights are actually there.
+            if is_flexicubes:
+                model.init_flexicubes_geometry(device, fovy=30.0)
+
+        lrm_model = model_cache.managed(
+            "instantmesh_lrm", {"ckpt": ckpt_path, "flexicubes": is_flexicubes},
+            build, post_load=post_load)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
 
         return (lrm_model, )
@@ -3453,13 +3476,15 @@ class Load_Craftsman_Shape_Diffusion_Model:
         cfg: ExperimentConfigCraftsman
         cfg = load_config_craftsman(self.config_root_path_abs)
 
-        craftsman_model: BaseSystem = craftsman.find(cfg.system_type)(
-            cfg.system, 
-        )
-        
-        craftsman_model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'))['state_dict'])
-        craftsman_model = craftsman_model.to(DEVICE).eval()
-        
+        def build(_config):
+            model: BaseSystem = craftsman.find(cfg.system_type)(
+                cfg.system, 
+            )
+            model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'))['state_dict'])
+            return model.eval()
+
+        craftsman_model = model_cache.managed("craftsman", {"ckpt": ckpt_path}, build)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {self.checkpoints_dir_abs}").msg.print()
         return (craftsman_model,)
     
@@ -4508,7 +4533,7 @@ class Load_Hunyuan3D_V2_TexGen_Pipeline:
             subfolder=subfolder
         )
 
-        return (pipe.to("cuda", torch.float16),)
+        return (pipe.to(DEVICE, WEIGHT_DTYPE),)
 
 class Hunyuan3D_V2_Paint_Model_Turbo_MV:
     """
