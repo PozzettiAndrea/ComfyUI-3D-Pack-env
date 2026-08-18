@@ -1,17 +1,5 @@
-# Pack-level config. Never describes the Python environment -- that is
-# nodes/comfy-env.toml's job.
+[node_reqs]
+ComfyUI-GeometryPack = "PozzettiAndrea/ComfyUI-GeometryPack"
 
-# Wire types this pack puts on node sockets (ADR-0015).
-# "custom"  = serialize/deserialize functions in ./serialization.py
-#
-# TRIMESH deliberately uses the SAME tag as ComfyUI-GeometryPack, because the
-# tag is type identity: two packs that both declare trimesh.Trimesh interoperate
-# without either adopting the other's class. serialization.py is a byte-for-byte
-# copy of GeometryPack's for exactly that reason -- if it drifts, the two packs
-# stop agreeing on the payload shape and the interop is silently lost.
-#
-# Geometry decomposes into shared-memory arrays instead of the 3-copy pickle
-# rung. The per-mesh extras (vt/ft/vn/fn/vc/albedo/metallicRoughness) ride in
-# mesh.metadata as torch tensors and go through the transport's tensor path.
 [types]
 TRIMESH = "custom"
