@@ -11,6 +11,30 @@ from .utils.typing import *
 
 import comfy.ops
 
+
+def _decode_steps(seq, desc):
+    """Iterate a decode loop, reporting progress and honouring Cancel.
+
+    Sampling already drives a progress bar from the pipeline's denoising loop,
+    but decoding is the other half of a TripoSG run -- millions of queries at
+    the higher octree depths -- and it reported nothing, so the node appeared
+    to hang after sampling finished.
+
+    Also the only point a stop request can land while decoding: the check runs
+    once per step rather than after the whole grid.
+    """
+    import comfy.model_management
+    import comfy.utils
+
+    seq = list(seq)
+    pbar = comfy.utils.ProgressBar(len(seq))
+    print(f"[TripoSG] {desc}: {len(seq)} step(s)", flush=True)
+    for item in seq:
+        comfy.model_management.throw_exception_if_processing_interrupted()
+        yield item
+        pbar.update(1)
+
+
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
 # comfy.ops class has and no torch.nn class does.
@@ -167,7 +191,8 @@ def hierarchical_extract_geometry(geometric_func: Callable,
     print(f'step 1 query num: {xyz_samples.shape[0]}')
     grid_logits = geometric_func(xyz_samples.unsqueeze(0)).to(torch.float16).view(grid_size[0], grid_size[1], grid_size[2])
     # print(f'step 1 grid_logits shape: {grid_logits.shape}')
-    for i in range(hierarchical_octree_depth - dense_octree_depth):
+    for i in _decode_steps(range(hierarchical_octree_depth - dense_octree_depth),
+                           "hierarchical decode"):
         curr_octree_depth = dense_octree_depth + i + 1
         # upsample
         grid_size = 2**curr_octree_depth
@@ -385,7 +410,8 @@ def flash_extract_geometry(
     )
     batch_logits = []
     num_batchs = max(num_chunks // xyz_samples.shape[1], 1)
-    for start in range(0, xyz_samples.shape[0], num_batchs):
+    for start in _decode_steps(range(0, xyz_samples.shape[0], num_batchs),
+                               "flash decode"):
         queries = xyz_samples[start: start + num_batchs, :]
         batch = queries.shape[0]
         batch_latents = repeat(latents.squeeze(0), "p c -> b p c", b=batch)
@@ -401,7 +427,7 @@ def flash_extract_geometry(
         (batch_size, grid_size[0], grid_size[1], grid_size[2])
     )
 
-    for octree_depth_now in resolutions[1:]:
+    for octree_depth_now in _decode_steps(resolutions[1:], "octree refine"):
         grid_size = np.array([octree_depth_now + 1] * 3)
         resolution = bbox_size / octree_depth_now
         next_index = torch.zeros(tuple(grid_size), dtype=dtype, device=device)
