@@ -85,7 +85,17 @@ class FrequencyPositionalEmbedding(nn.Module):
         """
 
         if self.num_freqs > 0:
-            embed = (x[..., None].contiguous() * self.frequencies).view(
+            # Cast the constant to the activation, never the other way round.
+            #
+            # `frequencies` is a persistent=False buffer, so it is absent from
+            # the checkpoint: diffusers' torch_dtype loading sets parameter
+            # dtypes from the weights and never re-.to()s the module, leaving
+            # this fp32 while everything around it is fp16. Multiplying then
+            # promoted fp16 queries to fp32, and the first layer that cannot
+            # adapt its weights -- stock diffusers Attention builds plain
+            # nn.Linear, unlike the ops.Linear the rest of the VAE uses --
+            # raised "expected mat1 and mat2 to have the same dtype".
+            embed = (x[..., None].contiguous() * self.frequencies.to(x.dtype)).view(
                 *x.shape[:-1], -1
             )
             if self.include_input:
