@@ -2740,11 +2740,25 @@ class Load_CRM_MVDiffusion_Model:
             },
         }
     
+    # CRM_MVDiffusion_to_Unique3D.json loads RealESRGAN_x4plus.pth through the
+    # native UpscaleModelLoader, and models/upscale_models/ ships empty -- so
+    # the graph failed on a file the user had to find themselves. Same model
+    # and same GitHub release as Load_CRM_T2I_V3_Models fetches.
+    UPSCALER_NAME = "RealESRGAN_x4plus.pth"
+    UPSCALER_URL = ("https://github.com/xinntao/Real-ESRGAN/releases/download/"
+                    "v0.1.0/RealESRGAN_x4plus.pth")
+
+    # upscale_model_name is APPENDED so slot 0 keeps its index in saved graphs.
+    # Typed COMBO, not STRING: UpscaleModelLoader declares model_name as
+    # ("COMBO", {...}) and ComfyUI matches links on that type string -- a
+    # STRING output simply will not connect to it.
     RETURN_TYPES = (
         "CRM_MVDIFFUSION_SAMPLER",
+        "COMBO",
     )
     RETURN_NAMES = (
         "crm_mvdiffusion_sampler",
+        "upscale_model_name",
     )
     FUNCTION = "load_CRM"
     CATEGORY = "Comfy3D/Import|Export"
@@ -2768,9 +2782,11 @@ class Load_CRM_MVDiffusion_Model:
             crm_mvdiffusion_model, device=get_device(), dtype=WEIGHT_DTYPE, **crm_config.sampler.params
         )
         
+        upscale_model_name = _ensure_upscale_model(self.UPSCALER_URL, self.UPSCALER_NAME)
+
         cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
         
-        return (crm_mvdiffusion_sampler, )
+        return (crm_mvdiffusion_sampler, upscale_model_name, )
     
 class CRM_Images_MVDiffusion_Model:
     
