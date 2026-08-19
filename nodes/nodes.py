@@ -183,6 +183,57 @@ def _mesh_input_combo():
     )
 
 
+def _instantmesh_safetensors(ckpt_path):
+    """Path of the .safetensors twin of an InstantMesh .ckpt, converting once.
+
+    TencentARC/InstantMesh publishes only .ckpt -- torch pickle archives, which
+    torch.load has to unpickle (arbitrary code, and slow: the file carries the
+    whole training checkpoint, of which we keep only the `lrm_generator.`
+    weights). There is no safetensors upstream to download, so make one: read
+    the pickle once, strip it to the weights this model actually loads, and
+    write the twin next to it. Every later load reads that instead.
+
+    Returns the .ckpt path unchanged if conversion is not possible, so a
+    failure here costs speed, never the node.
+    """
+    st_path = os.path.splitext(ckpt_path)[0] + ".safetensors"
+    if os.path.isfile(st_path):
+        return st_path
+    if not os.path.isfile(ckpt_path):
+        return ckpt_path
+    try:
+        from safetensors.torch import save_file
+
+        state_dict = _instantmesh_state_dict(ckpt_path, _allow_safetensors=False)
+        # contiguous(): safetensors refuses views into a shared buffer, which
+        # is how torch.load hands back slices of a checkpoint.
+        save_file({k: v.contiguous() for k, v in state_dict.items()}, st_path)
+        cstr(f"[InstantMesh] converted {os.path.basename(ckpt_path)} -> "
+             f"{os.path.basename(st_path)} ({len(state_dict)} tensors); "
+             f"later loads skip the pickle").msg.print()
+        return st_path
+    except Exception as e:
+        cstr(f"[InstantMesh] safetensors conversion skipped ({type(e).__name__}: {e}); "
+             f"loading the .ckpt").msg.print()
+        return ckpt_path
+
+
+def _instantmesh_state_dict(ckpt_path, _allow_safetensors=True):
+    """The `lrm_generator.` weights, from the safetensors twin when there is one."""
+    st_path = os.path.splitext(ckpt_path)[0] + ".safetensors"
+    if _allow_safetensors and os.path.isfile(st_path):
+        from safetensors.torch import load_file
+
+        return load_file(st_path, device="cpu")
+
+    # weights_only=True: this is a pickle from the internet and we want tensors
+    # from it, nothing else. torch>=2.6 defaults to it; be explicit so the
+    # intent survives a downgrade.
+    obj = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+    state_dict = obj["state_dict"] if "state_dict" in obj else obj
+    return {k[14:]: v for k, v in state_dict.items() if k.startswith("lrm_generator.")}
+
+
 def _resolve_input_mesh(mesh_path, mesh_file=None):
     """Resolve the chosen mesh to a file on disk.
 
@@ -3077,27 +3128,23 @@ class Load_InstantMesh_Reconstruction_Model:
         config = OmegaConf.load(config_path)
 
         ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
+        _instantmesh_safetensors(ckpt_path)
 
-        def build(_config):
-            model = instantiate_from_config(config.model_config)
-            state_dict = torch.load(ckpt_path, map_location='cpu')['state_dict']
-            state_dict = {k[14:]: v for k, v in state_dict.items() if k.startswith('lrm_generator.')}
-            model.load_state_dict(state_dict, strict=True)
-            return model.eval()
+        # Emit a recipe, not the model. The LRM holds nvdiffrast state
+        # (RasterizeCRStateWrapper) once FlexiCubes is initialised, and that is
+        # a C++ object: returning the live model made the worker die at the
+        # transport with "cannot pickle '_nvdiffrast_c.RasterizeCRStateWrapper'
+        # object". The recipe is a ~100-byte dict; the consumer resolves it
+        # inside the worker, where the model already lives.
+        cstr(f"[{self.__class__.__name__}] using ckpt {ckpt_path}").msg.print()
 
-        def post_load(model, device):
-            # FlexiCubes allocates its tetrahedral grid on the target device, so
-            # it has to wait until the weights are actually there.
-            if is_flexicubes:
-                model.init_flexicubes_geometry(device, fovy=30.0)
-
-        lrm_model = model_cache.managed(
-            "instantmesh_lrm", {"ckpt": ckpt_path, "flexicubes": is_flexicubes},
-            build, post_load=post_load)
-
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
-
-        return (lrm_model, )
+        return (model_cache.recipe(
+            "instantmesh_lrm",
+            model_name=model_name,
+            ckpt=ckpt_path,
+            config=config_path,
+            flexicubes=is_flexicubes,
+        ), )
     
 class InstantMesh_Reconstruction_Model:
 
@@ -3125,6 +3172,10 @@ class InstantMesh_Reconstruction_Model:
     
     @torch.no_grad()
     def run_LRM(self, lrm_model, multiview_images, orbit_camera_poses, orbit_camera_fovy, texture_resolution):
+
+        # An LRM_MODEL arrives as a recipe; resolve_lrm_model passes a live
+        # model straight through.
+        lrm_model = resolve_lrm_model(lrm_model)
 
         images = multiview_images.permute(0, 3, 1, 2).unsqueeze(0).to(get_device())   # [N, H, W, 3] -> [1, N, 3, H, W]
         images = v2.functional.resize(images, 320, interpolation=3, antialias=True).clamp(0, 1)
@@ -5355,6 +5406,37 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
             generation_mode=generation_mode,
             flash_vdm=flash_vdm,
         ),)
+
+
+@_pipe_builder("instantmesh_lrm")
+def _build_instantmesh_lrm(config):
+    """Materialize an instantmesh_lrm recipe. Only on a cache miss."""
+    from .Gen_3D_Modules.InstantMesh.utils.train_util import instantiate_from_config
+
+    model = instantiate_from_config(OmegaConf.load(config["config"]).model_config)
+    model.load_state_dict(_instantmesh_state_dict(config["ckpt"]), strict=True)
+    return model.eval()
+
+
+def resolve_lrm_model(config):
+    """LRM_MODEL recipe -> live model, cached across runs.
+
+    Non-dicts pass through, as with resolve_diffusers_pipe: this is called
+    unconditionally by consumers, and a live model must not be frozen into a
+    cache key.
+    """
+    if not isinstance(config, dict):
+        return config
+
+    def post_load(model, device):
+        # FlexiCubes allocates its tetrahedral grid on the target device, so it
+        # has to wait until the weights are actually there.
+        if config.get("flexicubes"):
+            model.init_flexicubes_geometry(device, fovy=30.0)
+
+    return model_cache.managed(
+        "instantmesh_lrm", config, _build_instantmesh_lrm,
+        post_load=post_load, reloadable=True)
 
 
 @_pipe_builder("hunyuan3d_v2_shapegen")
