@@ -41,6 +41,30 @@ import comfy.ops
 ops = comfy.ops.manual_cast
 
 
+def _get_head_mask(model, head_mask, num_hidden_layers):
+    """What PreTrainedModel.get_head_mask used to do.
+
+    transformers 5.x dropped get_head_mask from ModuleUtilsMixin, so this
+    vendored ViT raised "'ViTModel' object has no attribute 'get_head_mask'".
+    Use the model's own method when it still has one (older transformers), and
+    otherwise reproduce it: None means "mask nothing", which is every call in
+    this pack -- nothing here passes a head_mask -- and a supplied mask is
+    broadened to the 5-D shape the attention blocks index per layer.
+    """
+    if hasattr(model, "get_head_mask"):
+        return model.get_head_mask(head_mask, num_hidden_layers)
+    if head_mask is None:
+        return [None] * num_hidden_layers
+    if head_mask.dim() == 1:
+        head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        head_mask = head_mask.expand(num_hidden_layers, -1, -1, -1, -1)
+    elif head_mask.dim() == 2:
+        head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+    if head_mask.dim() != 5:
+        raise ValueError(f"head_mask.dim != 5, instead {head_mask.dim()}")
+    return head_mask.to(dtype=next(model.parameters()).dtype)
+
+
 class ViTEmbeddings(nn.Module):
     """
     Construct the CLS token, position and patch embeddings. Optionally, also the mask token.
@@ -510,7 +534,7 @@ class ViTModel(ViTPreTrainedModel):
         # attention_probs has shape bsz x n_heads x N x N
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+        head_mask = _get_head_mask(self, head_mask, self.config.num_hidden_layers)
 
         # TODO: maybe have a cleaner way to cast the input (from `ImageProcessor` side?)
         expected_dtype = self.embeddings.patch_embeddings.projection.weight.dtype
