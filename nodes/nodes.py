@@ -146,41 +146,15 @@ def _comfy_model_dir(folder):
 
 #: Mesh formats a texgen/projection node can open, matching ComfyUI's own
 #: Load3D node so the two agree on what "a 3D file" is.
+#:
+#: mesh_path stays a STRING rather than becoming a dropdown of input/3d: the
+#: shipped workflows LINK it from another node's STRING output (Save 3D Mesh,
+#: ShapeGen), and a COMBO input cannot accept a STRING link -- making it a
+#: combo fails validation with "received_type(STRING) mismatch input_type".
+#: Resolving the string against ComfyUI's input dir gets the same result
+#: without breaking those links.
 _MESH_INPUT_EXTS = [".glb", ".gltf", ".obj", ".fbx", ".stl", ".ply"]
 _NO_MESH_PLACEHOLDER = "(no 3D files found in input/3d)"
-
-
-def _mesh_input_combo():
-    """A dropdown of the 3D files in ComfyUI's input folder.
-
-    These nodes used to take a free-text path resolved against the process's
-    cwd, so the shipped workflows carried strings like
-    "custom_nodes/ComfyUI-3D-Pack/example_workflows/.../squirrel.glb" -- a path
-    from upstream's layout that does not exist here, and one no amount of
-    correct typing could make portable.
-
-    The option list below is only a placeholder: the `comfy_env_*` markers opt
-    this combo into comfy-env's live directory rescan, which runs in the HOST
-    process on every /object_info and replaces the options wholesale. That
-    matters because our INPUT_TYPES is captured once by the isolation metadata
-    scan and cached -- without the markers a file uploaded after startup would
-    never appear, even on reload.
-
-    Two sources, mirroring native Load3D: input/3d recursively (values relative
-    to the input root, e.g. "3d/foo.glb") and the input root itself.
-    """
-    return (
-        [_NO_MESH_PLACEHOLDER],
-        {
-            "comfy_env_dynamic_dir": "3d",
-            "comfy_env_sources": [
-                {"dir": "3d", "recursive": True, "rel_to_input": True},
-                {"dir": "", "recursive": False, "rel_to_input": False},
-            ],
-            "comfy_env_exts": _MESH_INPUT_EXTS,
-            "comfy_env_placeholder": _NO_MESH_PLACEHOLDER,
-        },
-    )
 
 
 def _resolve_input_mesh(mesh_path):
@@ -6702,7 +6676,7 @@ class Hunyuan3D_21_TexGen:
         return {
             "required": {
                 "texgen_pipe": ("DIFFUSERS_PIPE",),
-                "mesh_path": _mesh_input_combo(),
+                "mesh_path": ("STRING", {"default": "3d/squirrel_girl1_shape.glb"}),
                 "image": ("IMAGE",),
                 "create_pbr": ("BOOLEAN", {"default": True}),
                 "use_remesh": ("BOOLEAN", {"default": False}),

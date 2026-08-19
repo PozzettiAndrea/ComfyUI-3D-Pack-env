@@ -13,6 +13,7 @@
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
 import os
+import time
 import torch
 import copy
 import trimesh
@@ -28,6 +29,47 @@ from .utils.pipeline_utils import ViewProcessor
 from .utils.image_super_utils import imageSuperNet
 from .utils.uvwrap_utils import mesh_uv_wrap
 from .DifferentiableRenderer.mesh_utils import convert_obj_to_glb
+
+
+class _PhaseLog:
+    """Announce each texturing phase, with its wall time, and drive the node's bar.
+
+    Texturing is a long single call with no output of its own, so the node sat
+    silent for minutes and there was no way to tell a slow phase from a hung
+    one. Each phase prints when it starts and how long it took, and ticks
+    ComfyUI's progress bar (comfy-env forwards that to the browser).
+
+    Timings go to stdout, which the isolated worker captures and prefixes.
+    """
+
+    def __init__(self, total_phases):
+        self._t_phase = None
+        self._name = None
+        self._t0 = time.time()
+        try:
+            import comfy.utils
+            self._pbar = comfy.utils.ProgressBar(total_phases)
+        except Exception:
+            self._pbar = None
+
+    def __call__(self, name):
+        self.done()
+        self._name = name
+        self._t_phase = time.time()
+        print(f"[Hunyuan3D-2.1 texgen] {name} ...", flush=True)
+        return self
+
+    def done(self):
+        if self._name is not None:
+            print(f"[Hunyuan3D-2.1 texgen] {self._name} took "
+                  f"{time.time() - self._t_phase:.1f}s", flush=True)
+            self._name = None
+        if self._pbar is not None:
+            self._pbar.update(1)
+
+    def finish(self):
+        self.done()
+        print(f"[Hunyuan3D-2.1 texgen] TOTAL {time.time() - self._t0:.1f}s", flush=True)
 from .convert_utils import create_glb_with_pbr_materials
 import warnings
 
@@ -117,8 +159,12 @@ class Hunyuan3DPaintPipeline:
         else:
             image_prompt = image_path
 
+        # 10 phases; keep in step with the phase() calls below.
+        phase = _PhaseLog(10)
+
         # Process mesh
         path = os.path.dirname(mesh_path)
+        phase("remesh" if use_remesh else "load mesh")
         if use_remesh:
             processed_mesh_path = os.path.join(path, "white_mesh_remesh.obj")
             remesh_mesh(mesh_path, processed_mesh_path)
@@ -130,11 +176,13 @@ class Hunyuan3DPaintPipeline:
             output_mesh_path = os.path.join(path, f"textured_mesh.obj")
 
         # Load mesh
+        phase("UV unwrap")
         mesh = trimesh.load(processed_mesh_path)
         mesh = mesh_uv_wrap(mesh)
         self.render.load_mesh(mesh=mesh)
 
         ########### View Selection #########
+        phase("view selection")
         selected_camera_elevs, selected_camera_azims, selected_view_weights = self.view_processor.bake_view_selection(
             self.config.candidate_camera_elevs,
             self.config.candidate_camera_azims,
@@ -142,6 +190,7 @@ class Hunyuan3DPaintPipeline:
             self.config.max_selected_view_num,
         )
 
+        phase("render normal + position views")
         normal_maps = self.view_processor.render_normal_multiview(
             selected_camera_elevs, selected_camera_azims, use_abs_coor=True
         )
@@ -160,6 +209,7 @@ class Hunyuan3DPaintPipeline:
         image_style = [image.convert("RGB") for image in image_style]
 
         ###########  Multiview  ##########
+        phase("multiview diffusion")
         multiviews_pbr = self.models["multiview_model"](
             image_style,
             normal_maps + position_maps,
@@ -172,6 +222,7 @@ class Hunyuan3DPaintPipeline:
         enhance_images["albedo"] = copy.deepcopy(multiviews_pbr["albedo"])
         enhance_images["mr"] = copy.deepcopy(multiviews_pbr["mr"])
 
+        phase(f'super-resolution ({2 * len(enhance_images["albedo"])} images)')
         for i in range(len(enhance_images["albedo"])):
             enhance_images["albedo"][i] = self.models["super_model"](enhance_images["albedo"][i])
             enhance_images["mr"][i] = self.models["super_model"](enhance_images["mr"][i])
@@ -182,22 +233,26 @@ class Hunyuan3DPaintPipeline:
                 (self.config.render_size, self.config.render_size)
             )
             enhance_images["mr"][i] = enhance_images["mr"][i].resize((self.config.render_size, self.config.render_size))
+        phase("bake albedo")
         texture, mask = self.view_processor.bake_from_multiview(
             enhance_images["albedo"], selected_camera_elevs, selected_camera_azims, selected_view_weights
         )
         mask_np = (mask.squeeze(-1).cpu().numpy() * 255).astype(np.uint8)
+        phase("bake metallic/roughness")
         texture_mr, mask_mr = self.view_processor.bake_from_multiview(
             enhance_images["mr"], selected_camera_elevs, selected_camera_azims, selected_view_weights
         )
         mask_mr_np = (mask_mr.squeeze(-1).cpu().numpy() * 255).astype(np.uint8)
 
         ##########  inpaint  ###########
+        phase("texture inpaint")
         texture = self.view_processor.texture_inpaint(texture, mask_np)
         self.render.set_texture(texture, force_set=True)
         if "mr" in enhance_images:
             texture_mr = self.view_processor.texture_inpaint(texture_mr, mask_mr_np)
             self.render.set_texture_mr(texture_mr)
 
+        phase("save mesh + textures")
         self.render.save_mesh(output_mesh_path, downsample=True)
 
         if save_glb:
@@ -226,5 +281,7 @@ class Hunyuan3DPaintPipeline:
                 print(f"Warning: Failed to create GLB with PBR materials: {e}")
                 convert_obj_to_glb(output_mesh_path, output_glb_path)
                 print(f"Created GLB with basic conversion: {output_glb_path}")
+
+        phase.finish()
 
         return output_mesh_path

@@ -82,9 +82,17 @@ class Dino_v2(nn.Module):
         else:
             batch_size = 1
             dino_proceesed_images = self.dino_processor(images=images, return_tensors="pt").pixel_values
-            dino_proceesed_images = torch.stack(
-                [torch.from_numpy(np.array(image)) for image in dino_proceesed_images], dim=0
-            )
+            if not isinstance(dino_proceesed_images, torch.Tensor):
+                # Only needed if the processor handed back PIL/ndarray. With
+                # return_tensors="pt" it is already a stacked (N, C, H, W)
+                # tensor, and re-stacking it via np.array() is a no-op that
+                # silently round-trips through numpy -- which raises
+                # "can't convert cuda:0 device type tensor to numpy" as soon as
+                # a torch.set_default_device('cuda') context is in force, as it
+                # is when this pipeline runs.
+                dino_proceesed_images = torch.stack(
+                    [torch.from_numpy(np.array(image)) for image in dino_proceesed_images], dim=0
+                )
         dino_param = next(self.dino_v2.parameters())
         dino_proceesed_images = dino_proceesed_images.to(dino_param)
         dino_hidden_states = self.dino_v2(dino_proceesed_images)[0]
