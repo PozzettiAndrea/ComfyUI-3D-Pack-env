@@ -5,13 +5,7 @@ publish = true
 [test.workflows]
 timeout = 600
 cpu = []
-cuda = [
-    "Hunyuan3D_V2_Fast",
-    "Hunyuan3D_V1_lite",
-    "Hunyuan3D_V1_std",
-    "Hunyuan3D_V2",
-    "PartCrafter"
-]
+cuda = !["Unique3D_3_Mesh_Reconstruction","FlexiCubes_Multi-View_Depth_plus_Optional_Normal_maps_to_3D_Mesh", "MV-Adapter-tg2mv"]
 
 # hunyuan3d_v2, 
 [test.platforms]

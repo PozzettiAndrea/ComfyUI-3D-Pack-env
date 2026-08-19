@@ -42,6 +42,54 @@ controls.update();
 controls.enablePan = true;
 controls.enableDamping = true;
 
+// Render on demand, not every frame.
+//
+// This loop used to call renderer.render() on every animation frame for the
+// life of the node, whether or not anything had changed. Each Preview 3D node
+// is its own iframe with its own WebGL context, so N nodes meant N scenes
+// redrawing forever and the ComfyUI canvas fighting all of them for the main
+// thread. Measured headless: one viewer node took the page from 61 fps to 7,
+// four took it to 2.
+//
+// `dirty` is set by anything that changes the picture; controls.update()
+// separately reports camera movement (and keeps reporting it while damping
+// settles), and an animation mixer always needs frames.
+let dirty = true;
+let lastColorStyle = null;   // see the colour check in frameUpdate()
+// No controls 'change' listener: OrbitControls dispatches it from update(),
+// which under damping fires every frame forever (see cameraMoved below), so
+// it would re-dirty the scene on a camera at rest. cameraMoved() covers real
+// camera changes; `dirty` is for everything else (load, resize, colour).
+
+// Decide "did the camera actually move?" ourselves rather than trusting
+// controls.update()'s return value. With enableDamping it keeps reporting
+// movement forever: its target test is a strict `distanceToSquared > 0`, and
+// the damped offsets decay towards zero without ever reaching it, so the
+// return value stays true and the 'change' event keeps firing on a camera
+// that is visually at rest. Comparing against an epsilon settles.
+const _lastCam = {
+    pos: camera.position.clone(),
+    quat: camera.quaternion.clone(),
+    target: controls.target.clone(),
+    zoom: camera.zoom,
+};
+const _CAM_EPS = 1e-10;
+
+function cameraMoved() {
+    const moved =
+        camera.position.distanceToSquared( _lastCam.pos ) > _CAM_EPS ||
+        ( 1 - Math.abs( camera.quaternion.dot( _lastCam.quat ) ) ) > _CAM_EPS ||
+        controls.target.distanceToSquared( _lastCam.target ) > _CAM_EPS ||
+        Math.abs( camera.zoom - _lastCam.zoom ) > 1e-6;
+    if ( moved ) {
+        _lastCam.pos.copy( camera.position );
+        _lastCam.quat.copy( camera.quaternion );
+        _lastCam.target.copy( controls.target );
+        _lastCam.zoom = camera.zoom;
+    }
+    return moved;
+}
+
 // Handle window reseize event
 window.onresize = function () {
 
@@ -49,6 +97,7 @@ window.onresize = function () {
     camera.updateProjectionMatrix();
 
     renderer.setSize( window.innerWidth, window.innerHeight );
+    dirty = true;
 
 };
 
@@ -70,12 +119,22 @@ function frameUpdate() {
     var timestamp = visualizer.getAttribute("timestamp");
     if (timestamp == lastTimestamp){
         if (needUpdate){
-            controls.update();
+            controls.update();          // must run every frame for damping
+            const moved = cameraMoved();
             if (mixer !== undefined) {
                 const delta = clock.getDelta();
                 mixer.update(delta);
+                dirty = true;          // an animation changes every frame
             }
-            renderer.render( scene, camera );
+            window.__probe = window.__probe || {frames:0, renders:0, dirty:0, moved:0};
+            window.__probe.frames++;
+            if (dirty) window.__probe.dirty++;
+            if (moved) window.__probe.moved++;
+            if (dirty || moved) {
+                window.__probe.renders++;
+                renderer.render( scene, camera );
+                dirty = false;
+            }
         }
         requestAnimationFrame( frameUpdate );
     } else {
@@ -86,10 +145,19 @@ function frameUpdate() {
         main(filepath);
     }
 
-    var color = getRGBValue(colorPicker.value, true);
-    if (color[0] != scene.background.r || color[1] != scene.background.g || color[2] != scene.background.b){
+    // Compare the picker's own string, not its parsed channels against
+    // scene.background.
+    //
+    // getRGBValue returns sRGB 0..1 (rgb(128,128,128) -> 0.502), while
+    // three.js colour-manages setStyle() and stores the LINEAR value (~0.216).
+    // Those never compare equal, so this branch ran on every single frame --
+    // re-applying the background and marking the scene dirty forever. That is
+    // what kept each viewer redrawing at full rate with nothing happening:
+    // measured one WebGL draw call per animation frame, per node, while idle.
+    if (colorPicker.value !== lastColorStyle) {
+        lastColorStyle = colorPicker.value;
         scene.background.setStyle(colorPicker.value);
-        renderer.render( scene, camera ); // Force update background color in preview scene
+        dirty = true;   // repainted by the gated render above
     }
 }
 
@@ -182,6 +250,7 @@ async function main(filepath="") {
         }
 
         needUpdate = true;
+        dirty = true;
     }
 
     scene.add( ambientLight );
