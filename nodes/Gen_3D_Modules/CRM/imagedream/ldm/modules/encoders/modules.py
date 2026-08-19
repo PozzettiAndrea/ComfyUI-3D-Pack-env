@@ -285,9 +285,21 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder, nn.Module):
     def encode_with_transformer(self, text):
         x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
         x = x + self.model.positional_embedding
-        x = x.permute(1, 0, 2)  # NLD -> LND
+        # open_clip >= 2.24 builds its MultiheadAttention with batch_first=True
+        # (3.3.0 defaults to it), so the blocks now want NLD. This unconditional
+        # NLD -> LND permute was right for the open_clip of the day; against a
+        # batch_first build it presents 77 tokens as the batch and a batch of 1
+        # as the sequence, and the (77, 77) causal mask no longer fits:
+        #   "The shape of the 2D attn_mask is torch.Size([77, 77]),
+        #    but should be (1, 1)."
+        # Ask the model which layout it wants instead of assuming.
+        blocks = self.model.transformer.resblocks
+        batch_first = bool(getattr(blocks[0].attn, "batch_first", False)) if len(blocks) else False
+        if not batch_first:
+            x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
-        x = x.permute(1, 0, 2)  # LND -> NLD
+        if not batch_first:
+            x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
         return x
 
