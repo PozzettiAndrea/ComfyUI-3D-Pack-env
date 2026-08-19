@@ -144,6 +144,68 @@ def _comfy_model_dir(folder):
     return path
 
 
+#: Mesh formats a texgen/projection node can open, matching ComfyUI's own
+#: Load3D node so the two agree on what "a 3D file" is.
+_MESH_INPUT_EXTS = [".glb", ".gltf", ".obj", ".fbx", ".stl", ".ply"]
+_NO_MESH_PLACEHOLDER = "(no 3D files found in input/3d)"
+
+
+def _mesh_input_combo():
+    """A dropdown of the 3D files in ComfyUI's input folder.
+
+    These nodes used to take a free-text path resolved against the process's
+    cwd, so the shipped workflows carried strings like
+    "custom_nodes/ComfyUI-3D-Pack/example_workflows/.../squirrel.glb" -- a path
+    from upstream's layout that does not exist here, and one no amount of
+    correct typing could make portable.
+
+    The option list below is only a placeholder: the `comfy_env_*` markers opt
+    this combo into comfy-env's live directory rescan, which runs in the HOST
+    process on every /object_info and replaces the options wholesale. That
+    matters because our INPUT_TYPES is captured once by the isolation metadata
+    scan and cached -- without the markers a file uploaded after startup would
+    never appear, even on reload.
+
+    Two sources, mirroring native Load3D: input/3d recursively (values relative
+    to the input root, e.g. "3d/foo.glb") and the input root itself.
+    """
+    return (
+        [_NO_MESH_PLACEHOLDER],
+        {
+            "comfy_env_dynamic_dir": "3d",
+            "comfy_env_sources": [
+                {"dir": "3d", "recursive": True, "rel_to_input": True},
+                {"dir": "", "recursive": False, "rel_to_input": False},
+            ],
+            "comfy_env_exts": _MESH_INPUT_EXTS,
+            "comfy_env_placeholder": _NO_MESH_PLACEHOLDER,
+        },
+    )
+
+
+def _resolve_input_mesh(mesh_path):
+    """Resolve a mesh_path widget value to a file on disk.
+
+    Accepts what the combo offers (a path relative to ComfyUI's input dir) and
+    still accepts an absolute or cwd-relative path, so a graph that feeds one
+    in from somewhere else keeps working.
+    """
+    if not mesh_path or mesh_path == _NO_MESH_PLACEHOLDER:
+        raise Exception(
+            "No mesh selected. Put a mesh (%s) in ComfyUI's input/3d folder, "
+            "or upload one, then pick it in mesh_path."
+            % "/".join(e.lstrip(".") for e in _MESH_INPUT_EXTS))
+
+    input_dir = comfy_paths.get_input_directory()
+    for candidate in (mesh_path, os.path.join(input_dir, mesh_path)):
+        if os.path.isfile(candidate):
+            return candidate
+
+    raise Exception(
+        f"Mesh file not found: {mesh_path!r}. Looked in ComfyUI's input dir "
+        f"({input_dir}) and relative to {os.getcwd()}.")
+
+
 def _ensure_comfy_model(folder, filename, *, url=None, repo_id=None, repo_file=None):
     """Fetch a model into ComfyUI's OWN model folder and return its bare name.
 
@@ -6640,7 +6702,7 @@ class Hunyuan3D_21_TexGen:
         return {
             "required": {
                 "texgen_pipe": ("DIFFUSERS_PIPE",),
-                "mesh_path": ("STRING", {"default": ""}),
+                "mesh_path": _mesh_input_combo(),
                 "image": ("IMAGE",),
                 "create_pbr": ("BOOLEAN", {"default": True}),
                 "use_remesh": ("BOOLEAN", {"default": False}),
@@ -6652,8 +6714,7 @@ class Hunyuan3D_21_TexGen:
         # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
         # pipeline; resolve_diffusers_pipe passes the latter through.
         texgen_pipe = resolve_diffusers_pipe(texgen_pipe)
-        if not mesh_path or not os.path.exists(mesh_path):
-            raise Exception(f"Mesh file not found: {mesh_path}")
+        mesh_path = _resolve_input_mesh(mesh_path)
 
         pil_image = torch_imgs_to_pils(image)[0]
         
