@@ -21,8 +21,20 @@ try:
     import xformers.ops
 
     XFORMERS_IS_AVAILBLE = True
-except:
-    XFORMERS_IS_AVAILBLE = False
+except ImportError:
+    # This pack ships no xformers (see nodes/shared_utils/xformers_compat.py
+    # for why), and BasicTransformerBlock3D below asserts on this flag at
+    # CONSTRUCTION -- so the whole CRM model failed to build with "xformers is
+    # not available", after a 6 GB download.
+    #
+    # Bind the SDPA-backed stand-in instead of leaving the flag False. The two
+    # call sites in this file use xformers.ops.memory_efficient_attention,
+    # which is exactly what the shim provides; torch's SDPA computes the same
+    # function and dispatches to the same kernels, so this is a routing change,
+    # not a numerical one.
+    from ......shared_utils.xformers_compat import xformers
+
+    XFORMERS_IS_AVAILBLE = True
 
 # CrossAttn precision handling
 import os
