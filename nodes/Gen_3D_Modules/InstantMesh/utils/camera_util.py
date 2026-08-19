@@ -23,10 +23,22 @@ def center_looking_at_camera_pose(camera_position: torch.Tensor, look_at: torch.
     return: (M, 3, 4) or (3, 4)
     """
     # by default, looking at the origin and world up is z-axis
+    #
+    # device=camera_position.device is load-bearing, not tidiness. These are
+    # created bare, so under a torch.set_default_device('cuda') context -- which
+    # is in force when this pipeline runs -- they land on the GPU, while
+    # camera_position comes from torch.from_numpy() in spherical_camera_pose(),
+    # which always returns CPU and ignores the default device. Subtracting the
+    # two then raises "Expected all tensors to be on the same device".
+    #
+    # Take the device from the data rather than from ambient state.
     if look_at is None:
-        look_at = torch.tensor([0, 0, 0], dtype=torch.float32)
+        look_at = torch.tensor([0, 0, 0], dtype=torch.float32, device=camera_position.device)
     if up_world is None:
-        up_world = torch.tensor([0, 0, 1], dtype=torch.float32)
+        up_world = torch.tensor([0, 0, 1], dtype=torch.float32, device=camera_position.device)
+    # A caller-supplied one can disagree too.
+    look_at = look_at.to(camera_position.device)
+    up_world = up_world.to(camera_position.device)
     if camera_position.ndim == 2:
         look_at = look_at.unsqueeze(0).repeat(camera_position.shape[0], 1)
         up_world = up_world.unsqueeze(0).repeat(camera_position.shape[0], 1)
