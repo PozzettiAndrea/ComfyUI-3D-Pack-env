@@ -157,13 +157,51 @@ _MESH_INPUT_EXTS = [".glb", ".gltf", ".obj", ".fbx", ".stl", ".ply"]
 _NO_MESH_PLACEHOLDER = "(no 3D files found in input/3d)"
 
 
-def _resolve_input_mesh(mesh_path):
-    """Resolve a mesh_path widget value to a file on disk.
+def _mesh_input_combo():
+    """A dropdown of the 3D files in ComfyUI's input folder.
 
-    Accepts what the combo offers (a path relative to ComfyUI's input dir) and
-    still accepts an absolute or cwd-relative path, so a graph that feeds one
-    in from somewhere else keeps working.
+    The option list here is only a placeholder. Our INPUT_TYPES is captured
+    once by the isolation metadata scan and cached, so a static listing would
+    never show a file uploaded after startup; the comfy_env_* markers opt the
+    combo into comfy-env's live rescan, which runs in the HOST process on every
+    /object_info and replaces the options wholesale.
+
+    Two sources, mirroring native Load3D: input/3d recursively (values relative
+    to the input root, e.g. "3d/foo.glb") and the input root itself.
     """
+    return (
+        [_NO_MESH_PLACEHOLDER],
+        {
+            "comfy_env_dynamic_dir": "3d",
+            "comfy_env_sources": [
+                {"dir": "3d", "recursive": True, "rel_to_input": True},
+                {"dir": "", "recursive": False, "rel_to_input": False},
+            ],
+            "comfy_env_exts": _MESH_INPUT_EXTS,
+            "comfy_env_placeholder": _NO_MESH_PLACEHOLDER,
+        },
+    )
+
+
+def _resolve_input_mesh(mesh_path, mesh_file=None):
+    """Resolve the chosen mesh to a file on disk.
+
+    Two ways in, because both are needed. `mesh_file` is the dropdown of
+    input/3d -- the convenient one. `mesh_path` is an optional STRING socket
+    and takes precedence when set, because the shipped workflows LINK it from
+    another node's STRING output (Save 3D Mesh, ShapeGen), and a COMBO input
+    cannot accept a STRING link -- offering only the dropdown fails validation
+    with "received_type(STRING) mismatch input_type".
+
+    Either way the value may be relative to ComfyUI's input dir, absolute, or
+    relative to the cwd.
+    """
+    if isinstance(mesh_path, str) and mesh_path.strip():
+        chosen = mesh_path.strip()
+    else:
+        chosen = mesh_file
+
+    mesh_path = chosen
     if not mesh_path or mesh_path == _NO_MESH_PLACEHOLDER:
         raise Exception(
             "No mesh selected. Put a mesh (%s) in ComfyUI's input/3d folder, "
@@ -6119,7 +6157,7 @@ class MVAdapter_IG2MV:
         return {
             "required": {
                 "mvadapter_pipe": ("DIFFUSERS_PIPE",),
-                "mesh_path": ("STRING", {"default": ""}),
+                "mesh_file": _mesh_input_combo(),
                 "reference_image": ("IMAGE",),
                 "prompt": ("STRING", {"default": "high quality", "multiline": True}),
                 "negative_prompt": ("STRING", {"default": "watermark, ugly, deformed, noisy, blurry, low contrast", "multiline": True}),
@@ -6133,12 +6171,14 @@ class MVAdapter_IG2MV:
             },
             "optional": {
                 "lora_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1}),
+                # Wins when set; see _resolve_input_mesh.
+                "mesh_path": ("STRING", {"default": ""}),
             }
         }
 
-    def run(self, mvadapter_pipe, mesh_path, reference_image, prompt, negative_prompt, 
+    def run(self, mvadapter_pipe, mesh_file, reference_image, prompt, negative_prompt, 
             num_inference_steps, guidance_scale, reference_conditioning_scale,
-            height, width, seed, remove_background, lora_scale=1.0):
+            height, width, seed, remove_background, lora_scale=1.0, mesh_path=""):
         
         # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
         # pipeline; resolve_diffusers_pipe passes the latter through.
@@ -6147,8 +6187,7 @@ class MVAdapter_IG2MV:
             reference_images = torch_imgs_to_pils(reference_image)
             reference_image = reference_images[0]
         
-        if not mesh_path or not os.path.exists(mesh_path):
-            raise ValueError(f"Mesh path does not exist: {mesh_path}")
+        mesh_path = _resolve_input_mesh(mesh_path, mesh_file)
         
         num_views = 6 
         images, pos_images, normal_images, processed_ref_image = mvadapter_run_pipeline(
@@ -6676,19 +6715,24 @@ class Hunyuan3D_21_TexGen:
         return {
             "required": {
                 "texgen_pipe": ("DIFFUSERS_PIPE",),
-                "mesh_path": ("STRING", {"default": "3d/squirrel_girl1_shape.glb"}),
+                "mesh_file": _mesh_input_combo(),
                 "image": ("IMAGE",),
                 "create_pbr": ("BOOLEAN", {"default": True}),
                 "use_remesh": ("BOOLEAN", {"default": False}),
-            }
+            },
+            # Optional, and it wins when set: a COMBO cannot receive a STRING
+            # link, so this is how a graph wires in a path from another node.
+            "optional": {
+                "mesh_path": ("STRING", {"default": ""}),
+            },
         }
 
     @torch.no_grad()
-    def generate(self, texgen_pipe, mesh_path, image, create_pbr, use_remesh):
+    def generate(self, texgen_pipe, mesh_file, image, create_pbr, use_remesh, mesh_path=""):
         # A DIFFUSERS_PIPE may arrive as a recipe dict or as a live
         # pipeline; resolve_diffusers_pipe passes the latter through.
         texgen_pipe = resolve_diffusers_pipe(texgen_pipe)
-        mesh_path = _resolve_input_mesh(mesh_path)
+        mesh_path = _resolve_input_mesh(mesh_path, mesh_file)
 
         pil_image = torch_imgs_to_pils(image)[0]
         
