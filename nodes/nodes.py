@@ -2764,30 +2764,68 @@ class Load_CRM_MVDiffusion_Model:
     CATEGORY = "Comfy3D/Import|Export"
     
     def load_CRM(self, model_name, crm_config_path):
-        
-        from .Gen_3D_Modules.CRM.imagedream.ldm.util import instantiate_from_config, get_obj_from_str
+        """Download, and describe what to build. Do NOT build it.
 
+        This used to instantiate a 2B-parameter model here and then construct
+        the sampler -- which runs a CLIP forward pass to cache the negative
+        prompt embedding. A node called "(Down)Load" was doing inference, every
+        failure in the model or the text encoder surfaced only after a 6 GB
+        download, and the live sampler then had to cross the worker/host
+        boundary twice on CRM_MVDIFFUSION_SAMPLER, where only trimesh has a
+        serializer -- so a 2B-parameter object went through generic pickle.
+
+        Downloading stays here, so this is still the node that reports a
+        network failure. The consumers call resolve_crm_sampler().
+        """
         crm_config_path = os.path.join(self.config_dir(), crm_config_path)
-        
-        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
-            
-        crm_config = OmegaConf.load(crm_config_path)
-
-        crm_mvdiffusion_model = instantiate_from_config(crm_config.model)
-        crm_mvdiffusion_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
-        crm_mvdiffusion_model = crm_mvdiffusion_model.to(get_device()).to(WEIGHT_DTYPE)
-        crm_mvdiffusion_model.device = get_device()
-        
-        crm_mvdiffusion_sampler = get_obj_from_str(crm_config.sampler.target)(
-            crm_mvdiffusion_model, device=get_device(), dtype=WEIGHT_DTYPE, **crm_config.sampler.params
-        )
-        
+        ckpt_path = resume_or_download_model_from_hf(
+            self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
         upscale_model_name = _ensure_upscale_model(self.UPSCALER_URL, self.UPSCALER_NAME)
 
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
-        
-        return (crm_mvdiffusion_sampler, upscale_model_name, )
+        cstr(f"[{self.__class__.__name__}] ckpt ready at {ckpt_path}").msg.print()
+
+        return (model_cache.recipe(
+            "crm_mvdiffusion",
+            ckpt=ckpt_path,
+            config=crm_config_path,
+        ), upscale_model_name, )
     
+def _build_crm_mvdiffusion(config):
+    """Materialize a crm_mvdiffusion recipe. Only on a cache miss."""
+    from .Gen_3D_Modules.CRM.imagedream.ldm.util import (
+        instantiate_from_config, get_obj_from_str)
+
+    crm_config = OmegaConf.load(config["config"])
+
+    model = instantiate_from_config(crm_config.model)
+    model.load_state_dict(torch.load(config["ckpt"], map_location="cpu"), strict=False)
+    # Placed on the device here, not left to model_cache.managed() as the
+    # other builders do: the sampler below encodes the negative prompt in its
+    # constructor, and that forward pass needs real weights on the same device
+    # as the tokens it makes. managed() still wraps the result afterwards, so
+    # eviction works from the next execution on.
+    model = model.to(get_device()).to(WEIGHT_DTYPE)
+    model.device = get_device()
+
+    # The sampler encodes the negative prompt at construction, so it has to be
+    # built where the model is -- which is exactly why it does not belong in
+    # the loader.
+    return get_obj_from_str(crm_config.sampler.target)(
+        model, device=get_device(), dtype=WEIGHT_DTYPE, **crm_config.sampler.params)
+
+
+def resolve_crm_sampler(config):
+    """CRM_MVDIFFUSION_SAMPLER recipe -> live sampler, cached across runs.
+
+    Non-dicts pass through, as with resolve_diffusers_pipe, so consumers can
+    call this unconditionally and a live object is never frozen into a key.
+    """
+    if not isinstance(config, dict):
+        return config
+    return model_cache.managed(
+        "crm_mvdiffusion", config, _build_crm_mvdiffusion, reloadable=True)
+
+
 class CRM_Images_MVDiffusion_Model:
     
     @classmethod
@@ -2834,6 +2872,10 @@ class CRM_Images_MVDiffusion_Model:
         mv_guidance_scale, 
         num_inference_steps, 
     ):
+        # A CRM_MVDIFFUSION_SAMPLER arrives as a recipe; resolve_crm_sampler
+        # passes a live sampler straight through.
+        crm_mvdiffusion_sampler = resolve_crm_sampler(crm_mvdiffusion_sampler)
+
         pixel_img = torch_imgs_to_pils(reference_image, reference_mask)[0]
         pixel_img = CRMSampler.process_pixel_img(pixel_img)
         
@@ -2900,6 +2942,10 @@ class CRM_CCMs_MVDiffusion_Model:
         mv_guidance_scale, 
         num_inference_steps, 
     ):
+        # A CRM_MVDIFFUSION_SAMPLER arrives as a recipe; resolve_crm_sampler
+        # passes a live sampler straight through.
+        crm_mvdiffusion_sampler = resolve_crm_sampler(crm_mvdiffusion_sampler)
+
         pixel_img = torch_imgs_to_pils(reference_image, reference_mask)[0]
         pixel_img = CRMSampler.process_pixel_img(pixel_img)
         
