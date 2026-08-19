@@ -74,6 +74,7 @@ const _lastCam = {
     zoom: camera.zoom,
 };
 const _CAM_EPS = 1e-10;
+const _lastSize = { w: window.innerWidth, h: window.innerHeight };
 
 function cameraMoved() {
     const moved =
@@ -92,6 +93,14 @@ function cameraMoved() {
 
 // Handle window reseize event
 window.onresize = function () {
+
+    // Bail out when nothing actually changed. ComfyUI re-lays-out its DOM
+    // widgets as the canvas redraws, which fires resize on this iframe far
+    // more often than its size really changes -- and each one used to force a
+    // full re-render.
+    if ( window.innerWidth === _lastSize.w && window.innerHeight === _lastSize.h ) return;
+    _lastSize.w = window.innerWidth;
+    _lastSize.h = window.innerHeight;
 
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -126,12 +135,7 @@ function frameUpdate() {
                 mixer.update(delta);
                 dirty = true;          // an animation changes every frame
             }
-            window.__probe = window.__probe || {frames:0, renders:0, dirty:0, moved:0};
-            window.__probe.frames++;
-            if (dirty) window.__probe.dirty++;
-            if (moved) window.__probe.moved++;
             if (dirty || moved) {
-                window.__probe.renders++;
                 renderer.render( scene, camera );
                 dirty = false;
             }
