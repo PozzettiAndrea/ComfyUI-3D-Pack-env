@@ -5266,7 +5266,11 @@ class Load_Hunyuan3D_V2_ShapeGen_Pipeline:
         # chooses placement -- that is what makes eviction and partial loading
         # possible. Moving here spends the VRAM before ComfyUI is asked if
         # there is room, which is where every OOM in the 20:05 log was raised.
-        return pipe.to(WEIGHT_DTYPE)
+        #
+        # Keyword, not positional: this pipeline defines `to(self, device=None,
+        # dtype=None)`, so a positional dtype is taken as the device. It looks
+        # right because nn.Module.to() does accept a dtype positionally.
+        return pipe.to(dtype=WEIGHT_DTYPE)
 
     def load(self, generation_mode, flash_vdm):
         repo, subfolder, _def_steps = self._MODES[generation_mode]
@@ -5357,7 +5361,11 @@ def _build_hunyuan3d_v2_texgen(config):
     # chooses placement -- that is what makes eviction and partial loading
     # possible. Moving here spends the VRAM before ComfyUI is asked if
     # there is room, which is where every OOM in the 20:05 log was raised.
-    return pipe.to(WEIGHT_DTYPE)
+    #
+    # Keyword, not positional: this pipeline defines `to(self, device=None,
+    # dtype=None)`, so a positional dtype is taken as the device. It looks
+    # right because nn.Module.to() does accept a dtype positionally.
+    return pipe.to(dtype=WEIGHT_DTYPE)
 
 
 def resolve_hunyuan3d_v2_texgen(config):
