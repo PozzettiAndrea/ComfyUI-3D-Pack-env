@@ -33,10 +33,16 @@ try:
 except:
     print("Bpy IO CAN NOT BE Imported!!!")
 
+# The C++ extension is optional and is NOT built by this pack, so upstream's
+# "try the .so, print a warning, carry on" left meshVerticeInpaint unbound and
+# uv_inpaint() died with a bare NameError -- after multiview diffusion and
+# baking had already run, so the cost was ~4 minutes before anything failed.
+# A pure-numpy meshVerticeInpaint ships right next to the .cpp; use it. This is
+# the same chain this package's own __init__.py already had.
 try:
     from .mesh_inpaint_processor import meshVerticeInpaint  # , meshVerticeColor
-except:
-    print("InPaint Function CAN NOT BE Imported!!!")
+except ImportError:
+    from .mesh_inpaint_processor_fallback import meshVerticeInpaint
 
 
 class RenderMode(Enum):
