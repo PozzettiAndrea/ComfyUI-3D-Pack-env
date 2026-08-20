@@ -1,0 +1,42 @@
+{
+    "cpp": {
+        "options": [],
+        "deps": [
+            [
+                "/home/work/3dpackenved/ComfyUI/custom_nodes/ComfyUI-3D-Pack-enved/nodes/Gen_3D_Modules/StableFast3D/sf3d/texture_baker.slang",
+                1787143639.641964
+            ],
+            [
+                "/home/andrej/.ce/envs/3d-pack-enved-nodes-py313-torch2-8-cu128/.pixi/envs/default/lib/python3.13/site-packages/slangtorch/bin/slangc",
+                1786968167.5769124
+            ],
+            [
+                "/home/andrej/.ce/envs/3d-pack-enved-nodes-py313-torch2-8-cu128/.pixi/envs/default/lib/python3.13/site-packages/slangtorch/bin/libslang-compiler.so.0.2026.14.1",
+                1786968167.3879063
+            ]
+        ],
+        "version": "1.3.22",
+        "includePaths": []
+    },
+    "cuda": {
+        "options": [],
+        "deps": [
+            [
+                "/home/work/3dpackenved/ComfyUI/custom_nodes/ComfyUI-3D-Pack-enved/nodes/Gen_3D_Modules/StableFast3D/sf3d/texture_baker.slang",
+                1787143639.641964
+            ],
+            [
+                "/home/andrej/.ce/envs/3d-pack-enved-nodes-py313-torch2-8-cu128/.pixi/envs/default/lib/python3.13/site-packages/slangtorch/bin/slangc",
+                1786968167.5769124
+            ],
+            [
+                "/home/andrej/.ce/envs/3d-pack-enved-nodes-py313-torch2-8-cu128/.pixi/envs/default/lib/python3.13/site-packages/slangtorch/bin/libslang-compiler.so.0.2026.14.1",
+                1786968167.3879063
+            ]
+        ],
+        "version": "1.3.22",
+        "includePaths": []
+    },
+    "moduleName": "_slangtorch_texture_baker_806366b115ce5c11_0",
+    "moduleBinary": "/home/work/3dpackenved/ComfyUI/custom_nodes/ComfyUI-3D-Pack-enved/nodes/Gen_3D_Modules/StableFast3D/sf3d/.slangtorch_cache/texture_baker/806366b115ce5c11/0/_slangtorch_texture_baker_806366b115ce5c11_0.so"
+}

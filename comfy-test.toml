@@ -5,7 +5,21 @@ publish = true
 [test.workflows]
 timeout = 600
 cpu = []
-cuda = !["Unique3D_3_Mesh_Reconstruction","FlexiCubes_Multi-View_Depth_plus_Optional_Normal_maps_to_3D_Mesh", "MV-Adapter-tg2mv"]
+cuda = !["Unique3D_3_Mesh_Reconstruction",
+        "FlexiCubes_Multi-View_Depth_plus_Optional_Normal_maps_to_3D_Mesh",
+        "MV-Adapter-tg2mv",
+        "CRM_T2I_V3_MVs_Only",
+        "Unique3D_1_MV_RGB_Upscale",
+        "Render_Mesh_and_3DGS_Example",
+        "CRM_T2I_V2_to_MV_to_Texture",
+        "Unique3D_2_MV_Normal",
+        "CRM_T2I_V2_MVs_Only",
+        "Multi-View-Images_to_Instant-NGP_to_DiffRast_to_3DMesh",
+        "CRM_T2I_V3_to_MV_to_Texture_lora_model_Cup_Example",
+        "CRM_T2I_V3_to_MV_to_Texture_dora_model_Handgun_Example",
+        "Unique3D_1_MV_RGB_Upscale_New",
+        "Unique3D_All_Stages"
+        ]
 
 # hunyuan3d_v2, 
 [test.platforms]
