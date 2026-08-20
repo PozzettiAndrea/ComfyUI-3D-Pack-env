@@ -2566,7 +2566,9 @@ class Load_SF3D_Model:
 
     checkpoints_dir = "StableFast3D"
     default_ckpt_name = "model.safetensors"
-    default_repo_id = "stabilityai/stable-fast-3d"
+    # Ungated source for the SF3D weights: model.safetensors (4,024,289,892 B)
+    # and config.yaml (2,405 B), downloadable without a token.
+    default_repo_id = "patrickbdevaney/stable-fast-3d"
     config_path = "StableFast3D_config.yaml"
     
     @classmethod
