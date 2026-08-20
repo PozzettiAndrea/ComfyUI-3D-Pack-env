@@ -3046,22 +3046,47 @@ class Load_Convolutional_Reconstruction_Model:
     CATEGORY = "Comfy3D/Import|Export"
     
     def load_CRM(self, model_name):
-        
-        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
-        
-        crm_conf = json.load(open(self.config_file()))
+        """Download, and describe what to build. Do NOT build it.
 
-        def build(_config):
-            model = ConvolutionalReconstructionModel(crm_conf)
-            model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
-            return model
+        ConvolutionalReconstructionModel holds nvdiffrast state
+        (RasterizeCRStateWrapper), a C++ object, so returning it live killed
+        the worker at the transport:
 
-        crm_model = model_cache.managed("crm", {"ckpt": ckpt_path}, build)
+            cannot pickle '_nvdiffrast_c.RasterizeCRStateWrapper' object
 
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
-        
-        return (crm_model, )
+        Same as instantmesh_lrm and crm_mvdiffusion: emit a recipe and let the
+        consumer resolve it inside the worker, where the model already lives.
+        """
+        ckpt_path = resume_or_download_model_from_hf(
+            self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
+
+        cstr(f"[{self.__class__.__name__}] ckpt ready at {ckpt_path}").msg.print()
+
+        return (model_cache.recipe(
+            "crm_recon",
+            ckpt=ckpt_path,
+            config=self.config_file(),
+        ), )
     
+def _build_crm_recon(config):
+    """Materialize a crm_recon recipe. Only on a cache miss."""
+    crm_conf = json.load(open(config["config"]))
+    model = ConvolutionalReconstructionModel(crm_conf)
+    model.load_state_dict(torch.load(config["ckpt"], map_location="cpu"), strict=False)
+    return model
+
+
+def resolve_crm_model(config):
+    """CRM_MODEL recipe -> live model, cached across runs.
+
+    Non-dicts pass through, so consumers can call this unconditionally without
+    freezing a live model into a cache key.
+    """
+    if not isinstance(config, dict):
+        return config
+    return model_cache.managed("crm_recon", config, _build_crm_recon, reloadable=True)
+
+
 class Convolutional_Reconstruction_Model:
     
     @classmethod
@@ -3086,6 +3111,10 @@ class Convolutional_Reconstruction_Model:
     
     @torch.no_grad()
     def run_CRM(self, crm_model, multiview_images, multiview_CCMs):
+
+        # A CRM_MODEL arrives as a recipe; resolve_crm_model passes a live
+        # model straight through.
+        crm_model = resolve_crm_model(crm_model)
 
         np_imgs = np.concatenate(multiview_images.cpu().numpy(), 1) # (256, 256*6==1536, 3)
         np_xyzs = np.concatenate(multiview_CCMs.cpu().numpy(), 1) # (256, 1536, 3)
