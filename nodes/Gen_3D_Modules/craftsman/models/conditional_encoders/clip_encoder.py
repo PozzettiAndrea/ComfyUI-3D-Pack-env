@@ -55,7 +55,24 @@ class CLIPEmbedder(BaseEmbedder):
                 conditional_clip_config.vision_config.modulation_dim = self.cfg.camera_embeds_dim
                 self.model: CLIPModel = ConditionalCLIPModel.from_pretrained(
                     self.cfg.pretrained_model_name_or_path, 
-                    vision_config=conditional_clip_config.vision_config
+                    vision_config=conditional_clip_config.vision_config,
+                    # transformers 5.x RAISES on any shape mismatch instead of
+                    # warning, and openai/clip-vit-large-patch14 ships
+                    # logit_scale with shape [1] while current CLIPModel
+                    # declares it a scalar []:
+                    #     logit_scale | MISMATCH | ckpt torch.Size([1])
+                    #                             vs model torch.Size([])
+                    #     RuntimeError: You set `ignore_mismatched_sizes` to
+                    #     `False`, thus raising an error.
+                    # logit_scale only scales image-text contrastive
+                    # similarity. Craftsman uses CLIP purely as an image
+                    # conditioner and never computes that similarity, so the
+                    # value is unused either way.
+                    #
+                    # The MISSING entries in the same report are expected: the
+                    # mod_norm* layers are Craftsman's own additions, absent
+                    # from stock CLIP and filled from its checkpoint after this.
+                    ignore_mismatched_sizes=True,
                 )
                 
         self.tokenizer = None

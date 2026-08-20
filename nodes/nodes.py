@@ -315,6 +315,50 @@ def _ensure_upscale_model(url, filename):
     return _ensure_comfy_model("upscale_models", filename, url=url)
 
 
+def _torch_load_vendored(ckpt_path, alias):
+    """torch.load a checkpoint that pickles classes from a VENDORED package.
+
+    Craftsman's checkpoint stores objects whose classes were saved under a
+    top-level module name (`craftsman.systems...`). Here that package lives at
+    nodes/Gen_3D_Modules/craftsman, so unpickling raised
+
+        ModuleNotFoundError: No module named 'craftsman'
+
+    and simply aliasing the name in sys.modules is not enough: pickle then
+    imports the SUBMODULES as top-level too, and their relative imports
+    ("from ... import craftsman") walk off the top of the package --
+
+        ImportError: attempted relative import beyond top-level package
+
+    So rewrite the module path during unpickling instead, which leaves the
+    package to be imported under its real dotted name and keeps its relative
+    imports valid.
+
+    weights_only stays False because the archive pickles omegaconf objects
+    beside the tensors (Unsupported global: omegaconf.listconfig.ListConfig).
+    Same trust as before torch 2.6 flipped that default: the file is the one
+    this node just downloaded from its pinned repo.
+    """
+    import pickle
+    import types
+
+    target = _vendor_paths.resolve(alias)
+
+    class _VendoredUnpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module == alias or module.startswith(alias + "."):
+                module = target + module[len(alias):]
+            return super().find_class(module, name)
+
+    shim = types.ModuleType(f"_comfy3d_pickle_{alias}")
+    shim.Unpickler = _VendoredUnpickler
+    shim.Pickler = pickle.Pickler
+    shim.load = pickle.load
+    shim.dump = pickle.dump
+    return torch.load(ckpt_path, map_location=torch.device("cpu"),
+                      weights_only=False, pickle_module=shim)
+
+
 def _alias_model_index_libraries(base_dir):
     """Make a model_index.json's vendored `library` names importable.
 
@@ -4389,8 +4433,19 @@ class Load_CharacterGen_MVDiffusion_Model:
         # ...and the SD 2.1 base it is built on, to a LOCAL path. Passing a repo
         # id would send diffusers back to the hub on every load; passing a
         # directory keeps this node working offline and off a gated repo.
-        download_repo(self.SD21_REPO_ID, self.sd21_dir(), self.SD21_REPO_ID,
-                      ignore_patterns=["*.bin", "*.ckpt", "*.png", "*.md"])
+        # NOT (..., self.sd21_dir(), self.SD21_REPO_ID): download_repo joins
+        # every part after repo_id, and sd21_dir() already ends with the repo
+        # id, so passing it again nested the snapshot one level deeper --
+        #   Diffusers/nlightcho/stable-diffusion-2-1/nlightcho/stable-diffusion-2-1/
+        # and the loader, looking at the shallower path, reported
+        #   "no file named model.safetensors ... in directory ..."
+        # while the 5 GB sat one directory below.
+        download_repo(self.SD21_REPO_ID, self.sd21_dir(),
+                      ignore_patterns=["*.bin", "*.ckpt", "*.png", "*.md"],
+                      requires=["model_index.json",
+                                "text_encoder/model.safetensors",
+                                "unet/diffusion_pytorch_model.safetensors",
+                                "vae/diffusion_pytorch_model.safetensors"])
 
         config = OmegaConf.load(self.config_dir())
         config.pretrained_model_path = self.sd21_dir()
@@ -4615,7 +4670,8 @@ class Load_Craftsman_Shape_Diffusion_Model:
             model: BaseSystem = craftsman.find(cfg.system_type)(
                 cfg.system, 
             )
-            model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'))['state_dict'])
+            model.load_state_dict(
+                _torch_load_vendored(ckpt_path, "craftsman")['state_dict'])
             return model.eval()
 
         craftsman_model = model_cache.managed("craftsman", {"ckpt": ckpt_path}, build)
