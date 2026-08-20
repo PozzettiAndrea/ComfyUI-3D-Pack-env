@@ -3654,6 +3654,45 @@ class Load_Stable_Diffusion_15_Assets:
         return (ckpt, clip, upscaler)
 
 
+class Load_RealESRGAN_x4plus:
+    """Fetch RealESRGAN_x4plus.pth and hand its name to UpscaleModelLoader.
+
+    Several shipped graphs load this through the native UpscaleModelLoader,
+    whose widget is a combo over models/upscale_models/ -- which ships empty,
+    so the graph fails validation naming a file with no hint where to get it.
+
+    One output, nothing else. The bigger asset downloaders in this pack pull
+    several GB because their graphs need a checkpoint and a CLIP-Vision model
+    too; this is 67 MB and is all you need when the upscaler is the only thing
+    missing.
+
+    Wiring the output does real work beyond filling the widget: it ORDERS
+    execution, so UpscaleModelLoader cannot run before the file exists.
+    """
+
+    DISPLAY_NAME = "(Down)Load RealESRGAN x4plus"
+
+    CATEGORY = "Comfy3D/Import|Export"
+    # "*", ComfyUI's Any type. A native loader's model_name is typed as its
+    # OPTION LIST, and validate_node_input compares the two directly, so
+    # "COMBO" and "STRING" both fail to connect -- only "*" short-circuits it.
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("upscale_model_name",)
+    FUNCTION = "download"
+
+    UPSCALER_URL = Load_Stable_Diffusion_15_Assets.UPSCALER_URL
+    UPSCALER_FILE = Load_Stable_Diffusion_15_Assets.UPSCALER_FILE
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    def download(self):
+        name = _ensure_upscale_model(self.UPSCALER_URL, self.UPSCALER_FILE)
+        cstr(f"[{self.__class__.__name__}] ready: {name}").msg.print()
+        return (name, )
+
+
 class Load_Unique3D_MV_Upscale_Assets:
     """Fetch every stock model the Unique3D MV-RGB upscale graph needs.
 
