@@ -6,6 +6,8 @@ from scipy.spatial.transform import Rotation as R
 
 import torch
 
+import comfy.model_management
+
 from kiui.cam import orbit_camera
 
 #{Key: [elevation, azimuth], ...}
@@ -202,16 +204,16 @@ class MiniCam:
         w2c[1:3, :3] *= -1
         w2c[:3, 3] *= -1
 
-        self.world_view_transform = torch.tensor(w2c).transpose(0, 1).cuda()
+        self.world_view_transform = torch.tensor(w2c).transpose(0, 1).to(comfy.model_management.get_torch_device())
         self.projection_matrix = (
             get_projection_matrix(
                 znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy
             )
             .transpose(0, 1)
-            .cuda()
+            .to(comfy.model_management.get_torch_device())
         ) if projection_matrix is None else projection_matrix
         self.full_proj_transform = self.world_view_transform @ self.projection_matrix
-        self.camera_center = -torch.tensor(c2w[:3, 3]).cuda()
+        self.camera_center = -torch.tensor(c2w[:3, 3]).to(comfy.model_management.get_torch_device())
 
 class BaseCameraController(ABC):
     def __init__(self, renderer, cam_size_W, cam_size_H, reference_orbit_camera_fovy, invert_bg_prob=1.0, static_bg=None, device='cuda'):

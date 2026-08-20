@@ -1,3 +1,4 @@
+import comfy.model_management
 import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -64,7 +65,7 @@ class SSIM(torch.nn.Module):
             window = create_window(self.window_size, channel)
 
             if img1.is_cuda:
-                window = window.cuda(img1.get_device())
+                window = window.to(img1.get_device())
             window = window.type_as(img1)
 
             self.window = window
@@ -87,7 +88,7 @@ def ssim(img1, img2, use_padding=True, window_size=11, size_average=True):
     window = create_window(window_size, channel)
 
     if img1.is_cuda:
-        window = window.cuda(img1.get_device())
+        window = window.to(img1.get_device())
     window = window.type_as(img1)
 
     return _ssim(img1, img2, window, window_size, channel, use_padding, size_average)

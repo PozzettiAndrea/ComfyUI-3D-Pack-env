@@ -12,6 +12,7 @@
 # fine-tuning enabling code and other elements of the foregoing made publicly available
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
+import comfy.model_management
 import torch
 from diffusers import EulerAncestralDiscreteScheduler
 from diffusers import StableDiffusionControlNetPipeline, StableDiffusionXLControlNetImg2ImgPipeline, ControlNetModel, \
@@ -90,7 +91,7 @@ class HesModel:
 
         self.pipe.load_ip_adapter('h94/IP-Adapter', subfolder="sdxl_models", weight_name="ip-adapter_sdxl.safetensors")
         self.pipe.set_ip_adapter_scale(0.7)
-        self.pipe.to("cuda")
+        self.pipe.to(comfy.model_management.get_torch_device())
 
     def __call__(self,
                  init_image,

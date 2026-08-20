@@ -1,4 +1,5 @@
 from __future__ import annotations
+import comfy.model_management
 
 import numpy as np
 import torch
@@ -266,8 +267,8 @@ class Mesh:
         mesh.vertex.positions = o3d.core.Tensor(self.v_pos.detach().cpu().numpy())
         mesh.triangle.indices = o3d.core.Tensor(self.t_pos_idx.cpu().numpy())
         mesh.compute_uvatlas(size=1024)
-        texture_uvs = torch.from_numpy(mesh.triangle.texture_uvs.numpy()).reshape(-1, 2).cuda()
-        indices = torch.arange(self.t_pos_idx.shape[0] * 3).reshape(-1, 3).to(torch.int64).cuda()
+        texture_uvs = torch.from_numpy(mesh.triangle.texture_uvs.numpy()).reshape(-1, 2).to(comfy.model_management.get_torch_device())
+        indices = torch.arange(self.t_pos_idx.shape[0] * 3).reshape(-1, 3).to(torch.int64).to(comfy.model_management.get_torch_device())
         # Add a wood texture and visualize
         return texture_uvs, indices
     

@@ -1,3 +1,4 @@
+import comfy.model_management
 import os
 import json
 import torch
@@ -375,7 +376,7 @@ class StableGenPipelineBuilder:
         if DEVICE.type == "cuda":
             try:
                 if hasattr(pipeline, 'cuda'):
-                    pipeline.cuda()
+                    pipeline.to(comfy.model_management.get_torch_device())
 
                 if use_fp16:
                     if hasattr(pipeline, 'enable_attention_slicing'):

@@ -1,3 +1,4 @@
+import comfy.model_management
 import numpy as np
 import torch
 import time
@@ -176,8 +177,8 @@ class CRMSamplerV3:
 
         from kiui.mesh_utils import clean_mesh
         verts, faces = clean_mesh(data_config['verts'].squeeze().cpu().numpy().astype(np.float32), data_config['faces'].squeeze().cpu().numpy().astype(np.int32), repair = False, remesh=False, remesh_size=0.005)
-        data_config['verts'] = torch.from_numpy(verts).cuda().contiguous()
-        data_config['faces'] = torch.from_numpy(faces).cuda().contiguous()
+        data_config['verts'] = torch.from_numpy(verts).to(comfy.model_management.get_torch_device()).contiguous()
+        data_config['faces'] = torch.from_numpy(faces).to(comfy.model_management.get_torch_device()).contiguous()
 
         start_time = time.time()
         

@@ -1,3 +1,4 @@
+import comfy.model_management
 import os
 import math
 import numpy as np
@@ -364,11 +365,11 @@ def get_cam_info_gaussian(c2w, fovx, fovy, znear, zfar):
     c2w = convert_pose(c2w)
     world_view_transform = torch.inverse(c2w)
 
-    world_view_transform = world_view_transform.transpose(0, 1).cuda().float()
+    world_view_transform = world_view_transform.transpose(0, 1).to(comfy.model_management.get_torch_device()).float()
     projection_matrix = (
         get_projection_matrix_gaussian(znear=znear, zfar=zfar, fovX=fovx, fovY=fovy)
         .transpose(0, 1)
-        .cuda()
+        .to(comfy.model_management.get_torch_device())
     )
     full_proj_transform = (
         world_view_transform.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))

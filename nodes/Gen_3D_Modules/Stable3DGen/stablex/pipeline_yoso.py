@@ -15,6 +15,7 @@
 # --------------------------------------------------------------------------
 # More information and citation instructions are available on the
 # --------------------------------------------------------------------------
+import comfy.model_management
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -65,7 +66,7 @@ Examples:
 
 >>> pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(
 ...     "prs-eth/marigold-normals-lcm-v0-1", variant="fp16", torch_dtype=torch.float16
-... ).to("cuda")
+... ).to(comfy.model_management.get_torch_device())
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 >>> normals = pipe(image)

@@ -1,3 +1,4 @@
+import comfy.model_management
 from typing import Optional
 
 
@@ -8,7 +9,7 @@ try:
     import cvcuda
     torch_to_cvc = lambda x, layout: cvcuda.as_tensor(x, layout)
 
-    cvc_to_torch = lambda x, device: torch.tensor(x.cuda(), device=device)
+    cvc_to_torch = lambda x, device: torch.tensor(x.to(comfy.model_management.get_torch_device()), device=device)
 except ImportError:
     cvcuda = None
     torch_to_cvc = None

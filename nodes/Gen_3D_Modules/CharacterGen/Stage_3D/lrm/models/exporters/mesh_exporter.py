@@ -1,3 +1,4 @@
+import comfy.model_management
 from dataclasses import dataclass, field
 import os
 
@@ -32,7 +33,7 @@ def uv_padding_cvc(image, hole_mask, padding):
     import cvcuda
 
     torch_to_cvc = lambda x, layout: cvcuda.as_tensor(x, layout)
-    cvc_to_torch = lambda x: torch.as_tensor(x.cuda())
+    cvc_to_torch = lambda x: torch.as_tensor(x.to(comfy.model_management.get_torch_device()))
 
     uv_padding_size = padding
     image_cvc = torch_to_cvc((image.detach() * 255).to(torch.uint8), "HWC")

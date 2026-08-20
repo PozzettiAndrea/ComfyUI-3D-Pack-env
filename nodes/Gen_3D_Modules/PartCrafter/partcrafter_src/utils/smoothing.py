@@ -32,6 +32,7 @@
 Utilities for smoothing the occ/sdf grids.
 """
 
+import comfy.model_management
 import logging
 from typing import Tuple
 
@@ -407,7 +408,7 @@ def smooth_constrained(
     # # Compute the distance map, the border and the band.
     logging.info("Computing distance transform...")
     # distance, _, band = signed_distance_function(binary_array, band_radius)
-    binary_array_gpu = torch.from_numpy(binary_array).cuda()
+    binary_array_gpu = torch.from_numpy(binary_array).to(comfy.model_management.get_torch_device())
     distance, _, band = signed_distance_function_gpu(binary_array_gpu, band_radius)
     distance = distance.cpu().numpy()
     band = band.cpu().numpy()

@@ -79,7 +79,7 @@ class GaussianSplattingCameraController(BaseCameraController):
         return self.renderer.render(render_cam, bg_color=bg_color, **kwargs)
     
     def post_init(self):
-        self.projection_matrix = get_projection_matrix(self.cam.near, self.cam.far, self.cam.fovx, self.cam.fovy).transpose(0, 1).cuda()
+        self.projection_matrix = get_projection_matrix(self.cam.near, self.cam.far, self.cam.fovx, self.cam.fovy).transpose(0, 1).to(comfy.model_management.get_torch_device())
 
 class GaussianSplatting3D:
             

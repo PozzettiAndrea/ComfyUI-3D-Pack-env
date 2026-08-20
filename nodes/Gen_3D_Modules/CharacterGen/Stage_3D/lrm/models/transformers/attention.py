@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import comfy.model_management
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -61,7 +62,7 @@ class MemoryEfficientAttentionMixin:
         >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 
         >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16)
-        >>> pipe = pipe.to("cuda")
+        >>> pipe = pipe.to(comfy.model_management.get_torch_device())
         >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         >>> # Workaround for not accepting attention shape using VAE for Flash Attention
         >>> pipe.vae.enable_xformers_memory_efficient_attention(attention_op=None)

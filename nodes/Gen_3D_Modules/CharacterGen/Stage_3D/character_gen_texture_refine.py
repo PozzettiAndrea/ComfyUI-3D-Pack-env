@@ -1,3 +1,4 @@
+import comfy.model_management
 import os
 import numpy as np
 import torch
@@ -13,9 +14,9 @@ def back_to_texture(glctx, look_at, pos, tri, tex, uv, uv_idx, idx, vn):
     gb_normal, _ = dr.interpolate(vn[None], rast_out, tri)
     gb_normal = F.normalize(gb_normal, dim=-1)
     if idx == 2 or idx == 0:
-        filter_camera = [torch.tensor([[[[1,0.,0.]]]]).cuda(), torch.tensor([[[[-1,0.,0.]]]]).cuda()]
+        filter_camera = [torch.tensor([[[[1,0.,0.]]]]).to(comfy.model_management.get_torch_device()), torch.tensor([[[[-1,0.,0.]]]]).to(comfy.model_management.get_torch_device())]
     else:
-        filter_camera = [torch.tensor([[[[0,-1.,0.]]]]).cuda(), torch.tensor([[[[0,1.,0.]]]]).cuda()]
+        filter_camera = [torch.tensor([[[[0,-1.,0.]]]]).to(comfy.model_management.get_torch_device()), torch.tensor([[[[0,1.,0.]]]]).to(comfy.model_management.get_torch_device())]
     nmasks = []
     for fc in filter_camera:
         nmasks.append(((gb_normal * fc) > 0.75).int().sum(keepdim=True, dim=-1))
@@ -30,7 +31,7 @@ def back_to_texture(glctx, look_at, pos, tri, tex, uv, uv_idx, idx, vn):
     depth_map[depth_map > 0] = 1
     depth_map = depth_map.to(torch.float32)
     dmax = (rast_out[...,2:3] * gb_mask).max()
-    uv = torch.cat([uv * 2 - 1, torch.zeros(uv.shape[0], 1).cuda(), torch.ones(uv.shape[0], 1).cuda()], dim=1).unsqueeze(0)
+    uv = torch.cat([uv * 2 - 1, torch.zeros(uv.shape[0], 1).to(comfy.model_management.get_torch_device()), torch.ones(uv.shape[0], 1).to(comfy.model_management.get_torch_device())], dim=1).unsqueeze(0)
     uv_idx = uv_idx[tri_list.to(torch.long)]
     rast_uv, rast_uv_db = dr.rasterize(glctx, uv, uv_idx, resolution=(1024, 1024))
     pos_clip = torch.cat([pos[...,:2], pos[...,3:]], -1)
@@ -53,7 +54,7 @@ def perspective(fovy=0.6913, aspect=1.0, n=0.1, f=1000.0, device=None):
     return torch.tensor([[1/(y*aspect),    0,            0,              0], 
                          [           0, 1/-y,            0,              0], 
                          [           0,    0, -(f+n)/(f-n), -(2*f*n)/(f-n)], 
-                         [           0,    0,           -1,              0]]).to(torch.float32).cuda()
+                         [           0,    0,           -1,              0]]).to(torch.float32).to(comfy.model_management.get_torch_device())
 
 def rec_mvp(trans, h, w):
     mv = trans
@@ -115,13 +116,13 @@ def refine(save_path, front_image, back_image, left_image, right_image):
         if line.startswith("vt"):
             uvs = line.split(" ")[1:3]
             tex_uv += [float(uvs[0]), 1.0-float(uvs[1])]
-    tex_uv = torch.from_numpy(np.array(tex_uv)).to(torch.float32).cuda().reshape(-1, 2)
+    tex_uv = torch.from_numpy(np.array(tex_uv)).to(torch.float32).to(comfy.model_management.get_torch_device()).reshape(-1, 2)
     m = ms.current_mesh()
     v_matrix = m.vertex_matrix()
     f_matrix = m.face_matrix()
     vn = m.vertex_normal_matrix()
-    uv_idx = torch.arange(f_matrix.shape[0] * 3).reshape(-1, 3).to(torch.int32).cuda()
-    vn = torch.tensor(vn).contiguous().cuda().to(torch.float32)
+    uv_idx = torch.arange(f_matrix.shape[0] * 3).reshape(-1, 3).to(torch.int32).to(comfy.model_management.get_torch_device())
+    vn = torch.tensor(vn).contiguous().to(comfy.model_management.get_torch_device()).to(torch.float32)
 
     frames = []
     front_camera = torch.tensor([[
@@ -129,37 +130,37 @@ def refine(save_path, front_image, back_image, left_image, right_image):
         0,0,1,0,
         0,-1,0,-1.5,
         0,0,0,1,
-    ]]).to(torch.float32).reshape(4,4).cuda()
+    ]]).to(torch.float32).reshape(4,4).to(comfy.model_management.get_torch_device())
     back_camera = torch.tensor([[
         1,0,0,0,
         0,0,1,0,
         0,1,0,-1.5,
         0,0,0,1,
-    ]]).to(torch.float32).reshape(4,4).cuda()
+    ]]).to(torch.float32).reshape(4,4).to(comfy.model_management.get_torch_device())
     right_camera = torch.tensor([[
         0,-1,0,0,
         0,0,1,0,
         1,0,0,-1.5,
         0,0,0,1,
-    ]]).to(torch.float32).reshape(4,4).cuda()
+    ]]).to(torch.float32).reshape(4,4).to(comfy.model_management.get_torch_device())
     left_camera = torch.tensor([[
         0,1,0,0,
         0,0,1,0,
         -1,0,0,-1.5,
         0,0,0,1,
-    ]]).to(torch.float32).reshape(4,4).cuda()
+    ]]).to(torch.float32).reshape(4,4).to(comfy.model_management.get_torch_device())
     frames = [front_camera, left_camera, back_camera, right_camera]
 
     target_images = []
     for target_image in [front_image, left_image, back_image, right_image]:
-        target_images.append(torch.from_numpy(np.asarray(target_image.convert("RGB"))).to(torch.float32).cuda() / 255.)
+        target_images.append(torch.from_numpy(np.asarray(target_image.convert("RGB"))).to(torch.float32).to(comfy.model_management.get_torch_device()) / 255.)
 
-    pos = torch.tensor(v_matrix, dtype=torch.float32).contiguous().cuda()
-    tri = torch.tensor(f_matrix, dtype=torch.int32).contiguous().cuda()
+    pos = torch.tensor(v_matrix, dtype=torch.float32).contiguous().to(comfy.model_management.get_torch_device())
+    tri = torch.tensor(f_matrix, dtype=torch.int32).contiguous().to(comfy.model_management.get_torch_device())
 
-    kd_map = (torch.tensor(np.asarray(Image.open(f"{save_path}/texture_kd.jpg"))) / 255.).cuda()
-    translate_tensor = torch.zeros((1,1,3)).cuda()
-    pos = torch.cat([pos, torch.ones([pos.shape[0], 1]).cuda()],-1).unsqueeze(0)
+    kd_map = (torch.tensor(np.asarray(Image.open(f"{save_path}/texture_kd.jpg"))) / 255.).to(comfy.model_management.get_torch_device())
+    translate_tensor = torch.zeros((1,1,3)).to(comfy.model_management.get_torch_device())
+    pos = torch.cat([pos, torch.ones([pos.shape[0], 1]).to(comfy.model_management.get_torch_device())],-1).unsqueeze(0)
     glctx = dr.RasterizeCudaContext()
     target_texture = []
     target_mask = []

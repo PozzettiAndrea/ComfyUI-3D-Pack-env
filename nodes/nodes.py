@@ -2605,7 +2605,7 @@ class Convert_3DGS_to_Mesh_with_NeRF_and_Marching_Cubes:
         with torch.inference_mode(False):
             chosen_config = config_defaults[gs_config]
             chosen_config.force_cuda_rast = force_cuda_rast
-            converter = GSConverterNeRFMarchingCubes(config_defaults[gs_config], gs_ply).cuda()
+            converter = GSConverterNeRFMarchingCubes(config_defaults[gs_config], gs_ply).to(get_device())
             imgs, alphas = converter.fit_nerf(training_nerf_iterations, training_nerf_resolution)
             converter.fit_mesh(
                 training_mesh_iterations, remesh_after_n_iteration, training_mesh_resolution, 
@@ -2834,7 +2834,7 @@ class StableFast3D:
         
         with torch.autocast(device_type=get_autocast_device_type(), dtype=WEIGHT_DTYPE):
             model_batch = self.create_batch(single_image)
-            model_batch = {k: v.cuda() for k, v in model_batch.items()}
+            model_batch = {k: v.to(get_device()) for k, v in model_batch.items()}
             trimesh_mesh, _ = sf3d_model.generate_mesh(
                 model_batch, texture_resolution, remesh_option
             )

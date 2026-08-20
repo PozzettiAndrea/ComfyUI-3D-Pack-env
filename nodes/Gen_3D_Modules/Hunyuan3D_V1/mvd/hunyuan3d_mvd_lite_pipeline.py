@@ -69,7 +69,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = Hunyuan3d_MVD_Qing_Pipeline.from_pretrained(
         ...     "Tencent-Hunyuan-3D/MVD-Qing", torch_dtype=torch.float16
         ... )
-        >>> pipe.to("cuda")
+        >>> pipe.to(comfy.model_management.get_torch_device())
 
         >>> img = Image.open("demo.png")
         >>> res_img = pipe(img).images[0]

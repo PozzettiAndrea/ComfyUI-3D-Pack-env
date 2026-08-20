@@ -379,7 +379,7 @@ class MVDiffusionImagePipeline(DiffusionPipeline):
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             "lambdalabs/sd-image-variations-diffusers", revision="v2.0"
         )
-        pipe = pipe.to("cuda")
+        pipe = pipe.to(comfy.model_management.get_torch_device())
 
         url = "https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200"
 
