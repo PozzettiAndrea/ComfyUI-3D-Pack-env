@@ -13,6 +13,42 @@ from ..modules import sparse as sp
 from ..representations import Gaussian, Strivec, MeshExtractResult
 
 
+
+def _load_dinov2(name: str):
+    """Load a DINOv2 backbone without depending on GitHub or a token.
+
+    torch.hub.load('facebookresearch/dinov2', ...) reaches the network twice:
+    once to the GitHub API to check the repo is not a fork, and once for the
+    repo zipball. Both are avoidable and both have bitten this pack:
+
+      * the API call sends $GITHUB_TOKEN when one is exported, so a stale or
+        revoked token turns a request that succeeds ANONYMOUSLY into
+        "HTTP Error 401: Unauthorized" and takes the pipeline down. The token
+        buys nothing -- the repo is hard-coded, not user-supplied.
+      * the zipball makes every cold start depend on github.com being up.
+
+    So: prefer the already-downloaded hub checkout and load it with
+    source='local', which touches no network at all. Only fall back to
+    fetching, and even then without the fork check and with the token hidden
+    for the duration of the call.
+    """
+    import os
+
+    hub_dir = os.path.join(torch.hub.get_dir(), "facebookresearch_dinov2_main")
+    if os.path.isdir(hub_dir):
+        return torch.hub.load(hub_dir, name, source="local", pretrained=True)
+
+    # Not cached yet. Fetch once, with the fork check off and without offering
+    # credentials that are not needed and may be invalid.
+    saved = {k: os.environ.pop(k) for k in ("GITHUB_TOKEN", "GH_TOKEN")
+             if k in os.environ}
+    try:
+        return torch.hub.load("facebookresearch/dinov2", name, pretrained=True,
+                              skip_validation=True, trust_repo=True)
+    finally:
+        os.environ.update(saved)
+
+
 class TrellisImageTo3DPipeline(Pipeline):
     """
     Pipeline for inferring Trellis image-to-3D models.
@@ -72,7 +108,7 @@ class TrellisImageTo3DPipeline(Pipeline):
         """
         Initialize the image conditioning model.
         """
-        dinov2_model = torch.hub.load('facebookresearch/dinov2', name, pretrained=True)
+        dinov2_model = _load_dinov2(name)
         dinov2_model.eval()
         self.models['image_cond_model'] = dinov2_model
         transform = transforms.Compose([
