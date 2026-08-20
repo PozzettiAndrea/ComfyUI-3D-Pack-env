@@ -173,14 +173,27 @@ class TrellisModelManager:
                     if isinstance(self.config, dict) 
                     else getattr(self.config, 'use_fp16', True))
             
-            model = torch.hub.load(
-                local_repo_path,
-                model_name,
-                source='local',
-                pretrained=False,  
-                force_reload=False,
-                trust_repo=True
-            )
+            # Import the vendored package directly instead of going through
+            # torch.hub.load(source='local').
+            #
+            # torch.hub executes hubconf.py as a STANDALONE module with no
+            # package context, so its "from .hub.backbones import ..." cannot
+            # resolve:
+            #     ImportError: attempted relative import with no known parent
+            #     package
+            # The package is already inside this pack, so there is nothing for
+            # torch.hub to fetch or discover -- it was only being used as an
+            # awkward way to call a factory function by name.
+            from .dinov2.dinov2.hub import backbones as _dinov2_backbones
+
+            try:
+                factory = getattr(_dinov2_backbones, model_name)
+            except AttributeError:
+                available = sorted(n for n in dir(_dinov2_backbones)
+                                   if n.startswith("dinov2_"))
+                raise ValueError(
+                    f"unknown DINOv2 model {model_name!r}; available: {available}")
+            model = factory(pretrained=False)
             
             state_dict = torch.load(weights_path, map_location='cpu')
             

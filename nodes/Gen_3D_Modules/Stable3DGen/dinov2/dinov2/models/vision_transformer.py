@@ -18,7 +18,12 @@ import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
 
-from ...layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
+# ..layers, not ...layers: this file sits at dinov2/dinov2/models/, so two
+# dots reach the sibling `layers` package. Three walked up past it to a
+# directory with no layers/ at all --
+#     ImportError: attempted relative import beyond top-level package
+# The same file in TRELLIS's vendored copy, taken from upstream, uses two.
+from ..layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
 
 
 logger = logging.getLogger("dinov2")
