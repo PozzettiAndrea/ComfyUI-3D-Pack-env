@@ -2,7 +2,37 @@ from typing import *
 
 BACKEND = 'spconv' 
 DEBUG = False
-ATTN = 'xformers'
+
+
+def _default_attn():
+    """Pick an attention backend that is actually installed.
+
+    This used to be a hardcoded ATTN = 'xformers', overridable only by the
+    SPARSE_ATTN_BACKEND / ATTN_BACKEND environment variables. This pack ships
+    no xformers on purpose (see nodes/comfy-env.toml), so loading TRELLIS died
+    at import:
+
+        full_attn.py:7  import xformers.ops as xops
+        ModuleNotFoundError: No module named 'xformers'
+
+    even though flash_attn is present and the sibling Stable3DGen fork already
+    detects it -- which is why the log showed it choosing flash_attn while this
+    module still reached for xformers.
+
+    Preference order matches upstream's: xformers if it is there, else
+    flash_attn. An explicit env var still wins, in __from_env below.
+    """
+    import importlib.util
+
+    for name in ("xformers", "flash_attn"):
+        if importlib.util.find_spec(name) is not None:
+            return name
+    # Neither present: keep upstream's default so the failure names xformers,
+    # rather than failing somewhere less obvious.
+    return "xformers"
+
+
+ATTN = _default_attn()
 
 def __from_env():
     import os
