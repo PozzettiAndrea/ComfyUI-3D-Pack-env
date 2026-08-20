@@ -174,16 +174,19 @@ class Inference2D_API:
         imgs_in = process_image(input_image, totensor, val_width, val_height)
         imgs_in = rearrange(imgs_in.unsqueeze(0).unsqueeze(0), "B Nv C H W -> (B Nv) C H W")
                 
-        with torch.autocast(self.device, dtype=self.weight_dtype):
-            imgs_in = imgs_in.to(self.device)
-            # B*Nv images
-            out = self.validation_pipeline(prompt=prompt, negative_prompt=prompt_neg, image=imgs_in.to(self.weight_dtype), generator=generator, 
-                                        num_inference_steps=num_inference_steps, guidance_scale=guidance_scale,
-                                        camera_matrixs=camera_matrixs.to(self.weight_dtype), prompt_ids=prompt_ids, 
-                                        height=val_height, width=val_width, unet_condition_type=self.unet_condition_type, 
-                                        pose_guider=None, pose_image=pose_imgs_in, use_noise=self.use_noise, 
-                                        use_shifted_noise=use_shifted_noise, **self.validation).videos
-            out = rearrange(out, "B C f H W -> (B f) H W C", f=self.validation.video_length)
+        # imgs_in and camera_matrixs are already cast to self.weight_dtype at the
+        # call below, which is what actually sets the precision now: comfy.ops
+        # casts each weight to its input's dtype. The autocast wrapper also passed
+        # self.device positionally as device_type, so it broke off-CUDA.
+        imgs_in = imgs_in.to(self.device)
+        # B*Nv images
+        out = self.validation_pipeline(prompt=prompt, negative_prompt=prompt_neg, image=imgs_in.to(self.weight_dtype), generator=generator, 
+                                    num_inference_steps=num_inference_steps, guidance_scale=guidance_scale,
+                                    camera_matrixs=camera_matrixs.to(self.weight_dtype), prompt_ids=prompt_ids, 
+                                    height=val_height, width=val_width, unet_condition_type=self.unet_condition_type, 
+                                    pose_guider=None, pose_image=pose_imgs_in, use_noise=self.use_noise, 
+                                    use_shifted_noise=use_shifted_noise, **self.validation).videos
+        out = rearrange(out, "B C f H W -> (B f) H W C", f=self.validation.video_length)
 
         torch.cuda.empty_cache()
         return out

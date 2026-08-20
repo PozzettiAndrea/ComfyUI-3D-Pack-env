@@ -55,15 +55,15 @@ def timing_decorator(category: str):
     return decorator
 
 def auto_amp_inference(func):
-    '''
-        with torch.cuda.amp.autocast()" # deprecated.
-            xxx
-    '''
+    """Historically wrapped the call in an autocast region.
+
+    That is gone: it hardcoded CUDA, and ComfyUI manages dtype through
+    comfy.ops, which casts each weight to its input's dtype. The decorator is
+    kept so the call sites and their stack traces stay recognisable.
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        with torch.amp.autocast('cuda'): 
-            output = func(*args, **kwargs) 
-        return output
+        return func(*args, **kwargs)
     return wrapper
 
 def get_parameter_number(model):

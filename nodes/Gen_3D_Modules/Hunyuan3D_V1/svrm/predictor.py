@@ -139,16 +139,18 @@ class MV23DPredictor(object):
 		do_texture_mapping = True,
 	):
 		
-		with torch.amp.autocast('cuda'):
-			vtx_refine, faces_refine, vtx_colors = self.model.generate_mesh(
-				data = self.load_data(intput_imgs),
-				target_face_count = target_face_count,
-			)
+		# autocast dropped: it hardcoded 'cuda' so it raised off-CUDA, and
+		# comfy.ops already casts each weight to its input's dtype, which is
+		# what sets the precision here.
+		vtx_refine, faces_refine, vtx_colors = self.model.generate_mesh(
+			data = self.load_data(intput_imgs),
+			target_face_count = target_face_count,
+		)
 			
-			#self.model.export_mesh_with_uv(
-			#	vtx_refine, faces_refine, vtx_colors,
-			#	do_texture_mapping = do_texture_mapping,
-			#	out_dir = save_dir,
-			#)
+		#self.model.export_mesh_with_uv(
+		#	vtx_refine, faces_refine, vtx_colors,
+		#	do_texture_mapping = do_texture_mapping,
+		#	out_dir = save_dir,
+		#)
 		
 		return vtx_refine, faces_refine, vtx_colors

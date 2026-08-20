@@ -179,33 +179,40 @@ class TripoSGDecoder(nn.Module):
     ):
         logits = model_fn(queries, sample)
         if grad:
-            with torch.autocast(device_type="cuda", dtype=torch.float32):
-                if self.grad_type == "numerical":
-                    interval = self.grad_interval
-                    grad_value = []
-                    for offset in [
-                        (interval, 0, 0),
-                        (0, interval, 0),
-                        (0, 0, interval),
-                    ]:
-                        offset_tensor = torch.tensor(offset, device=queries.device)[
-                            None, :
-                        ]
-                        res_p = model_fn(queries + offset_tensor, sample)[..., 0]
-                        res_n = model_fn(queries - offset_tensor, sample)[..., 0]
-                        grad_value.append((res_p - res_n) / (2 * interval))
-                    grad_value = torch.stack(grad_value, dim=-1)
-                else:
-                    queries_d = torch.clone(queries)
-                    queries_d.requires_grad = True
-                    with torch.enable_grad():
-                        res_d = model_fn(queries_d, sample)
-                        grad_value = torch.autograd.grad(
-                            res_d,
-                            [queries_d],
-                            grad_outputs=torch.ones_like(res_d),
-                            create_graph=self.training,
-                        )[0]
+            # fp32 explicitly rather than via autocast. comfy.ops casts each
+            # weight to its input's dtype (cast_bias_weight: dtype = input.dtype),
+            # so casting the activations here is what sets the precision -- and it
+            # works off-CUDA, which device_type="cuda" did not. fp32 matters here
+            # because the finite difference (res_p - res_n) cancels catastrophically
+            # in fp16 when the two evaluations are close.
+            queries = queries.float()
+            sample = sample.float()
+            if self.grad_type == "numerical":
+                interval = self.grad_interval
+                grad_value = []
+                for offset in [
+                    (interval, 0, 0),
+                    (0, interval, 0),
+                    (0, 0, interval),
+                ]:
+                    offset_tensor = torch.tensor(offset, device=queries.device)[
+                        None, :
+                    ]
+                    res_p = model_fn(queries + offset_tensor, sample)[..., 0]
+                    res_n = model_fn(queries - offset_tensor, sample)[..., 0]
+                    grad_value.append((res_p - res_n) / (2 * interval))
+                grad_value = torch.stack(grad_value, dim=-1)
+            else:
+                queries_d = torch.clone(queries)
+                queries_d.requires_grad = True
+                with torch.enable_grad():
+                    res_d = model_fn(queries_d, sample)
+                    grad_value = torch.autograd.grad(
+                        res_d,
+                        [queries_d],
+                        grad_outputs=torch.ones_like(res_d),
+                        create_graph=self.training,
+                    )[0]
         else:
             grad_value = None
 

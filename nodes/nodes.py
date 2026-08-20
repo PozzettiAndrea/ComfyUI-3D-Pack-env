@@ -2540,9 +2540,11 @@ class Large_Multiview_Gaussian_Model:
         rays_embeddings = lgm_model.prepare_default_rays(get_device_str())
         ref_image_torch = torch.cat([ref_image_torch, rays_embeddings], dim=1).unsqueeze(0) # [1, 4, 9, 256, 256]
         
-        with torch.autocast(device_type=get_autocast_device_type(), dtype=WEIGHT_DTYPE):
-            # generate gaussians
-            gaussians = lgm_model.forward_gaussians(ref_image_torch)
+        # The activation dtype is what comfy.ops casts the weights to, so state it
+        # on the tensor rather than through an autocast region.
+        ref_image_torch = ref_image_torch.to(WEIGHT_DTYPE)
+        # generate gaussians
+        gaussians = lgm_model.forward_gaussians(ref_image_torch)
         
         # convert gaussians to ply
         gs_ply = lgm_model.gs.to_ply(gaussians)
@@ -2832,12 +2834,13 @@ class StableFast3D:
     def run_SF3D(self, sf3d_model, reference_image, reference_mask, texture_resolution, remesh_option):
         single_image = torch_imgs_to_pils(reference_image, reference_mask)[0]
         
-        with torch.autocast(device_type=get_autocast_device_type(), dtype=WEIGHT_DTYPE):
-            model_batch = self.create_batch(single_image)
-            model_batch = {k: v.to(get_device()) for k, v in model_batch.items()}
-            trimesh_mesh, _ = sf3d_model.generate_mesh(
-                model_batch, texture_resolution, remesh_option
-            )
+        # WEIGHT_DTYPE is applied to the batch below rather than through autocast;
+        # comfy.ops casts each weight to its input's dtype.
+        model_batch = self.create_batch(single_image)
+        model_batch = {k: v.to(device=get_device(), dtype=WEIGHT_DTYPE) if v.is_floating_point() else v.to(get_device()) for k, v in model_batch.items()}
+        trimesh_mesh, _ = sf3d_model.generate_mesh(
+            model_batch, texture_resolution, remesh_option
+        )
         mesh = Mesh.load_trimesh(given_mesh=trimesh_mesh[0])
 
         return (_wire_out(mesh),)
@@ -3578,12 +3581,16 @@ class Era3D_MVDiffusion_Model:
         generator = torch.Generator(device=era3d_pipe.unet.device).manual_seed(seed)
 
         # sampling
-        with torch.autocast(get_autocast_device_type()):
-            unet_out = era3d_pipe(
-                imgs_in, None, prompt_embeds=prompt_embeddings,
-                generator=generator, guidance_scale=guidance_scale, output_type='pt', num_images_per_prompt=1, 
-                num_inference_steps=num_inference_steps, eta=eta
-            )
+        # Cast the inputs instead of wrapping in autocast: comfy.ops takes the
+        # compute dtype from the activations (cast_bias_weight: dtype = input.dtype).
+        imgs_in = imgs_in.to(era3d_pipe.unet.dtype)
+        if torch.is_tensor(prompt_embeddings):
+            prompt_embeddings = prompt_embeddings.to(era3d_pipe.unet.dtype)
+        unet_out = era3d_pipe(
+            imgs_in, None, prompt_embeds=prompt_embeddings,
+            generator=generator, guidance_scale=guidance_scale, output_type='pt', num_images_per_prompt=1, 
+            num_inference_steps=num_inference_steps, eta=eta
+        )
         
         out = unet_out.images
         bsz = out.shape[0] // 2

@@ -7,6 +7,25 @@ from ..imagedream.ldm.models.diffusion.ddim import DDIMSampler
 from torchvision import transforms as T
 
 
+def _to_compute_dtype(cond, dtype):
+    """Cast conditioning activations to the model's compute dtype.
+
+    comfy.ops casts each weight to its input's dtype (cast_bias_weight:
+    dtype = input.dtype), so under ComfyUI the activations choose the precision.
+    This used to be a torch.autocast around the whole block; dropping it without
+    casting here would run the entire diffusion in fp32.
+    """
+    if cond is None or dtype is None:
+        return cond
+    if torch.is_tensor(cond):
+        return cond.to(dtype) if cond.is_floating_point() else cond
+    if isinstance(cond, dict):
+        return {k: (v.to(dtype) if torch.is_tensor(v) and v.is_floating_point() else v)
+                for k, v in cond.items()}
+    return cond
+
+
+
 class ImageDreamDiffusion:
     def __init__(
         self,
@@ -106,7 +125,7 @@ class ImageDreamDiffusion:
         ip_raw = ip
         if type(prompt) != list:
             prompt = [prompt]
-        with torch.no_grad(), torch.autocast(device_type=torch.device(device).type, dtype=dtype):
+        with torch.no_grad():
             c = model.get_learned_conditioning(prompt).to(
                 device
             )  # shape: torch.Size([1, 77, 1024]) mean: -0.17, std: 1.02, min: -7.50, max: 13.05
@@ -139,6 +158,7 @@ class ImageDreamDiffusion:
                 uc_["ip_img"] = torch.zeros_like(ip_img)
 
             shape = [4, image_size // 8, image_size // 8]  # [4, 32, 32]
+
             if offset_noise:
                 ref = transform(ip_raw).to(device)
                 ref_latent = model.get_first_stage_encoding(model.encode_first_stage(ref[None, :, :, :]))
@@ -146,6 +166,10 @@ class ImageDreamDiffusion:
                 time_steps = torch.randint(model.num_timesteps - 1, model.num_timesteps, (batch_size,), device=device)
                 x_T = model.q_sample(torch.ones([batch_size] + shape, device=device) * ref_mean, time_steps)
 
+            c_ = _to_compute_dtype(c_, dtype)
+            uc_ = _to_compute_dtype(uc_, dtype)
+            if offset_noise:
+                x_T = _to_compute_dtype(x_T, dtype)
             samples_ddim, _ = (
                 sampler.sample(  # shape: torch.Size([5, 4, 32, 32]) mean: 0.29, std: 0.85, min: -3.38, max: 4.43
                     S=step,
@@ -280,7 +304,7 @@ class ImageDreamDiffusionStage2:
         ip_raw = ip
         if type(prompt) != list:
             prompt = [prompt]
-        with torch.no_grad(), torch.autocast(device_type=torch.device(device).type, dtype=dtype):
+        with torch.no_grad():
             c = model.get_learned_conditioning(prompt).to(
                 device
             )  # shape: torch.Size([1, 77, 1024]) mean: -0.17, std: 1.02, min: -7.50, max: 13.05
@@ -311,6 +335,7 @@ class ImageDreamDiffusionStage2:
             uc_["pixel_images"] = torch.zeros_like(latent_pixel_images)
 
             shape = [4, image_size // 8, image_size // 8]  # [4, 32, 32]
+
             if offset_noise:
                 ref = transform(ip_raw).to(device)
                 ref_latent = model.get_first_stage_encoding(model.encode_first_stage(ref[None, :, :, :]))
@@ -318,6 +343,10 @@ class ImageDreamDiffusionStage2:
                 time_steps = torch.randint(model.num_timesteps - 1, model.num_timesteps, (batch_size,), device=device)
                 x_T = model.q_sample(torch.ones([batch_size] + shape, device=device) * ref_mean, time_steps)
 
+            c_ = _to_compute_dtype(c_, dtype)
+            uc_ = _to_compute_dtype(uc_, dtype)
+            if offset_noise:
+                x_T = _to_compute_dtype(x_T, dtype)
             samples_ddim, _ = (
                 sampler.sample(  # shape: torch.Size([5, 4, 32, 32]) mean: 0.29, std: 0.85, min: -3.38, max: 4.43
                     S=step,

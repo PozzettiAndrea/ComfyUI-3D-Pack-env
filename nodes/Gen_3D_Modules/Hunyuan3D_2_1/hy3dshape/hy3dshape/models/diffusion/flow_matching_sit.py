@@ -254,41 +254,45 @@ class Diffuser(pl.LightningModule):
         pl.seed_everything(self.trainer.global_rank)
 
     def forward(self, batch):
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16): #float32 for text
-            contexts = self.cond_stage_model(image=batch.get('image'), text=batch.get('text'), mask=batch.get('mask'))
-            # t5_text = contexts['t5_text']['prompt_embeds']
-            # nan_count = torch.isnan(t5_text).sum()
-            # if nan_count > 0:
-            #     print("t5_text has %d NaN values"%(nan_count))
-        with torch.autocast(device_type="cuda", dtype=torch.float16):
-            with torch.no_grad():
-                latents = self.first_stage_model.encode(batch[self.first_stage_key], sample_posterior=True)
-                latents = self.z_scale_factor * latents
-                # print(latents.shape)
+        # autocast dropped in favour of comfy.ops, which casts each weight to its
+        # input's dtype. Training-only path: reached from training_step(), which
+        # ComfyUI never calls, so no inference behaviour changes here.
+        contexts = self.cond_stage_model(image=batch.get('image'), text=batch.get('text'), mask=batch.get('mask'))
+        # t5_text = contexts['t5_text']['prompt_embeds']
+        # nan_count = torch.isnan(t5_text).sum()
+        # if nan_count > 0:
+        #     print("t5_text has %d NaN values"%(nan_count))
+        # fp16 here came from autocast(device_type="cuda"); the latents now take
+        # their dtype from the encoder input, and this path is training-only --
+        # ComfyUI reaches inference through the pipeline, never training_step().
+        with torch.no_grad():
+            latents = self.first_stage_model.encode(batch[self.first_stage_key], sample_posterior=True)
+            latents = self.z_scale_factor * latents
+            # print(latents.shape)
 
-                # check vae encode and decode is ok? answer is ok !
-                # import time
-                # from hy3dshape.pipelines import export_to_trimesh
-                # latents = 1. / self.z_scale_factor * latents
-                # latents = self.first_stage_model(latents)
-                # outputs = self.first_stage_model.latents2mesh(
-                #     latents,
-                #     bounds=1.01,
-                #     mc_level=0.0,
-                #     num_chunks=20000,
-                #     octree_resolution=256,
-                #     mc_algo='mc',
-                #     enable_pbar=True
-                # )
-                # mesh = export_to_trimesh(outputs)
-                # if isinstance(mesh, list):
-                #     for midx, m in enumerate(mesh):
-                #         m.export(f"check_{midx}_{time.time()}.glb")
-                # else:
-                #     mesh.export(f"check_{time.time()}.glb")
+            # check vae encode and decode is ok? answer is ok !
+            # import time
+            # from hy3dshape.pipelines import export_to_trimesh
+            # latents = 1. / self.z_scale_factor * latents
+            # latents = self.first_stage_model(latents)
+            # outputs = self.first_stage_model.latents2mesh(
+            #     latents,
+            #     bounds=1.01,
+            #     mc_level=0.0,
+            #     num_chunks=20000,
+            #     octree_resolution=256,
+            #     mc_algo='mc',
+            #     enable_pbar=True
+            # )
+            # mesh = export_to_trimesh(outputs)
+            # if isinstance(mesh, list):
+            #     for midx, m in enumerate(mesh):
+            #         m.export(f"check_{midx}_{time.time()}.glb")
+            # else:
+            #     mesh.export(f"check_{time.time()}.glb")
                 
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            loss = self.transport.training_losses(self.model, latents, dict(contexts=contexts))["loss"].mean()
+        # See forward() above: precision follows the activations under comfy.ops.
+        loss = self.transport.training_losses(self.model, latents, dict(contexts=contexts))["loss"].mean()
         return loss
 
     def training_step(self, batch, batch_idx, optimizer_idx=0):
@@ -322,33 +326,35 @@ class Diffuser(pl.LightningModule):
         generator = torch.Generator().manual_seed(0)
 
         with self.ema_scope("Sample"):
-            with torch.amp.autocast(device_type='cuda'):
-                try:
-                    self.pipeline.device = self.device
-                    self.pipeline.dtype = self.dtype
-                    print("### USING PIPELINE ###")
-                    print(f'device: {self.device} dtype : {self.dtype}')
-                    additional_params = {'output_type':output_type}
+            # autocast dropped: comfy.ops casts each weight to its input's dtype,
+            # so the activations set the precision. The old call also hardcoded
+            # device_type='cuda' and raised off-CUDA.
+            try:
+                self.pipeline.device = self.device
+                self.pipeline.dtype = self.dtype
+                print("### USING PIPELINE ###")
+                print(f'device: {self.device} dtype : {self.dtype}')
+                additional_params = {'output_type':output_type}
 
-                    image = batch.get("image", None)
-                    mask = batch.get('mask', None)
+                image = batch.get("image", None)
+                mask = batch.get('mask', None)
                     
-                    # if not isinstance(image, torch.Tensor): print(image.shape)
-                    # if isinstance(mask, torch.Tensor): print(mask.shape)
+                # if not isinstance(image, torch.Tensor): print(image.shape)
+                # if isinstance(mask, torch.Tensor): print(mask.shape)
                     
-                    outputs = self.pipeline(image=image, 
-                                            mask=mask,
-                                            generator=generator,
-                                            **additional_params)
+                outputs = self.pipeline(image=image, 
+                                        mask=mask,
+                                        generator=generator,
+                                        **additional_params)
 
-                except Exception as e:
-                    import traceback
-                    traceback.print_exc()
-                    print(f"Unexpected {e=}, {type(e)=}")
-                    with open("error.txt", "a") as f:
-                        f.write(str(e))
-                        f.write(traceback.format_exc())
-                        f.write("\n")
-                    outputs = [None]
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"Unexpected {e=}, {type(e)=}")
+                with open("error.txt", "a") as f:
+                    f.write(str(e))
+                    f.write(traceback.format_exc())
+                    f.write("\n")
+                outputs = [None]
         self.cond_stage_model.disable_drop = False
         return [outputs]

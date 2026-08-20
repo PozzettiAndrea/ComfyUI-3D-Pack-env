@@ -15,6 +15,25 @@ from ...modules.diffusionmodules.util import (
 )
 
 
+def _activation_dtype(cond, default=torch.float32):
+    """Compute dtype implied by the conditioning activations.
+
+    comfy.ops casts every weight to its input's dtype (cast_bias_weight:
+    dtype = input.dtype), so under ComfyUI the activations decide the precision
+    -- there is no ambient autocast to set it. The latents therefore have to be
+    created in the same dtype as the conditioning, or the whole diffusion
+    silently runs in fp32: twice the memory, half the speed.
+    """
+    if torch.is_tensor(cond):
+        return cond.dtype
+    if isinstance(cond, dict):
+        for v in cond.values():
+            if torch.is_tensor(v) and v.is_floating_point():
+                return v.dtype
+    return default
+
+
+
 class DDIMSampler(object):
     def __init__(self, model, schedule="linear", **kwargs):
         super().__init__()
@@ -198,7 +217,7 @@ class DDIMSampler(object):
         device = self.model.betas.device
         b = shape[0]
         if x_T is None:
-            img = torch.randn(shape, device=device) # shape: torch.Size([5, 4, 32, 32]) mean: -0.00, std: 1.00, min: -3.64, max: 3.94
+            img = torch.randn(shape, device=device, dtype=_activation_dtype(cond)) # shape: torch.Size([5, 4, 32, 32]) mean: -0.00, std: 1.00, min: -3.64, max: 3.94
         else:
             img = x_T
 

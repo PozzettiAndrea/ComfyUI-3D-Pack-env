@@ -17,6 +17,21 @@ from ....mesh_processer.mesh_utils import construct_list_of_gs_attributes, write
 
 import comfy.ops
 
+
+def _to_f32(t):
+    """Cast a floating tensor to fp32, passing None and non-float through.
+
+    The CUDA rasterizer requires fp32 inputs. That used to be expressed as an
+    fp32 autocast region around the call; under ComfyUI there is no ambient
+    autocast for that to override, and comfy.ops takes the compute dtype from
+    the activations, so the requirement belongs on the tensors themselves.
+    """
+    import torch as _torch
+    if _torch.is_tensor(t) and t.is_floating_point():
+        return t.float()
+    return t
+
+
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
 # comfy.ops class has and no torch.nn class does.
@@ -265,16 +280,19 @@ class GS3DRenderer(BaseModule):
             shs = gs.shs
 
         # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-        with torch.autocast(device_type=self.device.type, dtype=torch.float32):
-            rendered_image, radii, rendered_depth, rendered_alpha = rasterizer(
-                means3D = means3D,
-                means2D = means2D,
-                shs = shs,
-                colors_precomp = colors_precomp,
-                opacities = opacity,
-                scales = scales,
-                rotations = rotations,
-                cov3D_precomp = cov3D_precomp)
+        means3D, means2D = _to_f32(means3D), _to_f32(means2D)
+        shs, colors_precomp = _to_f32(shs), _to_f32(colors_precomp)
+        opacity, scales = _to_f32(opacity), _to_f32(scales)
+        rotations, cov3D_precomp = _to_f32(rotations), _to_f32(cov3D_precomp)
+        rendered_image, radii, rendered_depth, rendered_alpha = rasterizer(
+            means3D = means3D,
+            means2D = means2D,
+            shs = shs,
+            colors_precomp = colors_precomp,
+            opacities = opacity,
+            scales = scales,
+            rotations = rotations,
+            cov3D_precomp = cov3D_precomp)
         
         ret = {
             "comp_rgb": rendered_image.permute(1, 2, 0),
@@ -299,17 +317,19 @@ class GS3DRenderer(BaseModule):
             )
             rasterizer = GaussianRasterizer(raster_settings=raster_settings)
             
-            with torch.autocast(device_type=self.device.type, dtype=torch.float32):
-                rendered_mask, radii, rendered_depth, rendered_alpha = rasterizer(
-                    means3D = means3D,
-                    means2D = means2D,
-                    # shs = ,
-                    colors_precomp = torch.ones_like(means3D),
-                    opacities = opacity,
-                    scales = scales,
-                    rotations = rotations,
-                    cov3D_precomp = cov3D_precomp)
-                ret["comp_mask"] = rendered_mask.permute(1, 2, 0)
+            means3D, means2D = _to_f32(means3D), _to_f32(means2D)
+            opacity, scales = _to_f32(opacity), _to_f32(scales)
+            rotations, cov3D_precomp = _to_f32(rotations), _to_f32(cov3D_precomp)
+            rendered_mask, radii, rendered_depth, rendered_alpha = rasterizer(
+                means3D = means3D,
+                means2D = means2D,
+                # shs = ,
+                colors_precomp = torch.ones_like(means3D),
+                opacities = opacity,
+                scales = scales,
+                rotations = rotations,
+                cov3D_precomp = cov3D_precomp)
+            ret["comp_mask"] = rendered_mask.permute(1, 2, 0)
 
         return ret
     

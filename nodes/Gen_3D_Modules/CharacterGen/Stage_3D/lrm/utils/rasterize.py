@@ -23,11 +23,15 @@ class NVDiffRasterizerContext:
     def vertex_transform(
         self, verts: Float[Tensor, "Nv 3"], mvp_mtx: Float[Tensor, "B 4 4"]
     ) -> Float[Tensor, "B Nv 4"]:
-        with torch.cuda.amp.autocast(enabled=False):
-            verts_homo = torch.cat(
-                [verts, torch.ones([verts.shape[0], 1]).to(verts)], dim=-1
-            )
-            verts_clip = torch.matmul(verts_homo, mvp_mtx.permute(0, 2, 1))
+        # fp32 on the tensors rather than autocast(enabled=False): clip-space
+        # vertex transforms lose precision badly in fp16, and under ComfyUI there
+        # is no ambient autocast for enabled=False to switch off.
+        verts = verts.float()
+        mvp_mtx = mvp_mtx.float()
+        verts_homo = torch.cat(
+            [verts, torch.ones([verts.shape[0], 1]).to(verts)], dim=-1
+        )
+        verts_clip = torch.matmul(verts_homo, mvp_mtx.permute(0, 2, 1))
         return verts_clip
 
     def rasterize(
