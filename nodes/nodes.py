@@ -1968,6 +1968,58 @@ def _try_enable_xformers(obj, disabled=False):
         # (attention_processor.py:405); ValueError when the device cannot use it.
         cstr(f"[Comfy3D] xformers attention unavailable, using the default "
              f"backend instead ({type(exc).__name__})").msg.print()
+        _enable_custom_xformers_processors(obj)
+
+
+def _enable_custom_xformers_processors(obj):
+    """Install the XFormers* processors on modules that define their own.
+
+    Some vendored models -- Era3D is the one that bites -- subclass Attention
+    and OVERRIDE set_use_memory_efficient_attention_xformers to swap in their
+    own processor, with no is_xformers_available() check:
+
+        class CustomJointAttention(Attention):
+            def set_use_memory_efficient_attention_xformers(self, *a, **kw):
+                self.set_processor(XFormersJointAttnProcessor())
+
+    Those XFormers* processors are the ones the model's blocks are written
+    against; the plain MVAttnProcessor / JointAttnProcessor siblings produce a
+    shape the block cannot add to its residual:
+
+        RuntimeError: The size of tensor a (24) must match the size of
+        tensor b (4096) at non-singleton dimension 1
+
+    diffusers' recursive enable never reaches them: it walks the module tree
+    and the first PLAIN Attention raises ModuleNotFoundError, aborting the
+    whole pass. So the override is called directly here, on exactly the modules
+    that define one.
+
+    Safe without xformers installed, which is the entire point: those
+    processors call xformers.ops.memory_efficient_attention, which resolves to
+    the SDPA-backed stand-in in shared_utils/xformers_compat.py.
+    """
+    from diffusers.models.attention_processor import Attention
+
+    modules = getattr(obj, "modules", None)
+    if modules is None:
+        return
+    patched = 0
+    for m in modules():
+        if not isinstance(m, Attention):
+            continue
+        # Only subclasses that define their own override -- never the plain
+        # Attention, whose implementation is the one that just raised.
+        fn = type(m).set_use_memory_efficient_attention_xformers
+        if fn is Attention.set_use_memory_efficient_attention_xformers:
+            continue
+        try:
+            m.set_use_memory_efficient_attention_xformers(True)
+            patched += 1
+        except Exception:
+            pass
+    if patched:
+        cstr(f"[Comfy3D] installed {patched} model-specific xformers "
+             f"processor(s), routed through the SDPA stand-in").msg.print()
 
 
 # recipe kind -> builder. A consumer takes a DIFFUSERS_PIPE without knowing
