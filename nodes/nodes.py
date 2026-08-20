@@ -2613,6 +2613,13 @@ class Load_SF3D_Model:
         ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
 
         def build(_config):
+            # SF3D loads through safetensors' own load_model(), which passes
+            # backend= to load_file. If any node has imported mmgp.offload by
+            # now -- Hunyuan3D 2.1 texgen does -- load_file is mmgp's
+            # replacement, which has no such parameter.
+            from .shared_utils.mmgp_compat import keep_safetensors_compatible
+            keep_safetensors_compatible()
+
             model = SF3D.from_pretrained(
                 config_path=self.config_file(),
                 weight_path=ckpt_path
