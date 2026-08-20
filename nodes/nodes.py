@@ -2758,12 +2758,15 @@ class Load_CRM_MVDiffusion_Model:
                     "v0.1.0/RealESRGAN_x4plus.pth")
 
     # upscale_model_name is APPENDED so slot 0 keeps its index in saved graphs.
-    # Typed COMBO, not STRING: UpscaleModelLoader declares model_name as
-    # ("COMBO", {...}) and ComfyUI matches links on that type string -- a
-    # STRING output simply will not connect to it.
+    # "*" (ComfyUI's Any type), not "COMBO". A native loader's model_name input
+    # is typed as its OPTION LIST, not the string "COMBO", and
+    # comfy_execution.validation.validate_node_input compares the two directly:
+    #     received_type(COMBO) mismatch input_type(['RealESRGAN_x4plus.pth'])
+    # Only "*" short-circuits that check, so it is the one output type that
+    # will actually connect to a combo widget.
     RETURN_TYPES = (
         "CRM_MVDIFFUSION_SAMPLER",
-        "COMBO",
+        "*",
     )
     RETURN_NAMES = (
         "crm_mvdiffusion_sampler",
@@ -3561,7 +3564,13 @@ class Load_Stable_Diffusion_15_Assets:
     DISPLAY_NAME = "(Down)Load SD1.5 Assets (checkpoint / CLIP-Vision / upscaler)"
 
     CATEGORY = "Comfy3D/Import|Export"
-    RETURN_TYPES = ("COMBO", "COMBO", "COMBO")
+    # "*" (ComfyUI's Any type), not "COMBO". A native loader's model_name input
+    # is typed as its OPTION LIST, not the string "COMBO", and
+    # comfy_execution.validation.validate_node_input compares the two directly:
+    #     received_type(COMBO) mismatch input_type(['RealESRGAN_x4plus.pth'])
+    # Only "*" short-circuits that check, so it is the one output type that
+    # will actually connect to a combo widget.
+    RETURN_TYPES = ("*", "*", "*")
     RETURN_NAMES = ("ckpt_name", "clip_name", "upscale_model_name")
     FUNCTION = "download"
 
@@ -3594,6 +3603,86 @@ class Load_Stable_Diffusion_15_Assets:
 
         cstr(f"[{self.__class__.__name__}] ready: {ckpt}, {clip}, {upscaler}").msg.print()
         return (ckpt, clip, upscaler)
+
+
+class Load_Unique3D_MV_Upscale_Assets:
+    """Fetch every stock model the Unique3D MV-RGB upscale graph needs.
+
+    Unique3D_1_MV_RGB_Upscale is built almost entirely from NATIVE ComfyUI
+    nodes -- CheckpointLoaderSimple, CLIPVisionLoader, UpscaleModelLoader,
+    ControlNetLoader, IPAdapterModelLoader -- and each takes a combo of
+    whatever happens to sit in the matching models/ folder. On a fresh install
+    all five are empty, so the graph fails validation before a single node
+    runs, naming five files with no hint where they come from.
+
+    This returns their NAMES, one output per loader. The links do real work:
+    they order execution, so no loader can run before its file has landed.
+
+    Superset of Load_SD1.5_Assets (same first three outputs, same files, so
+    they share a download) plus the two that graph does not need: the Unique3D
+    tile ControlNet and the SD1.5 IPAdapter.
+
+    ~6.2 GB in total, which is why this is its own node rather than extra
+    outputs on a Unique3D loader -- it only runs when something is wired to it.
+    Everything here is safetensors or a plain .pth; nothing pulls a pickle.
+    """
+
+    DISPLAY_NAME = "(Down)Load Unique3D MV Upscale Assets"
+
+    CATEGORY = "Comfy3D/Import|Export"
+    # "*" (ComfyUI's Any type), not "COMBO". A native loader's model_name input
+    # is typed as its OPTION LIST, not the string "COMBO", and
+    # comfy_execution.validation.validate_node_input compares the two directly:
+    #     received_type(COMBO) mismatch input_type(['RealESRGAN_x4plus.pth'])
+    # Only "*" short-circuits that check, so it is the one output type that
+    # will actually connect to a combo widget.
+    RETURN_TYPES = ("*", "*", "*", "*", "*")
+    RETURN_NAMES = ("ckpt_name", "clip_name", "upscale_model_name",
+                    "control_net_name", "ipadapter_file")
+    FUNCTION = "download"
+
+    # Shared with Load_Stable_Diffusion_15_Assets, so wiring both costs one
+    # download rather than two.
+    CKPT_REPO = Load_Stable_Diffusion_15_Assets.CKPT_REPO
+    CKPT_FILE = Load_Stable_Diffusion_15_Assets.CKPT_FILE
+    CLIP_REPO = Load_Stable_Diffusion_15_Assets.CLIP_REPO
+    CLIP_REPO_FILE = Load_Stable_Diffusion_15_Assets.CLIP_REPO_FILE
+    CLIP_FILE = Load_Stable_Diffusion_15_Assets.CLIP_FILE
+    UPSCALER_URL = Load_Stable_Diffusion_15_Assets.UPSCALER_URL
+    UPSCALER_FILE = Load_Stable_Diffusion_15_Assets.UPSCALER_FILE
+
+    # Unique3D's own tile ControlNet, in safetensors. Kept under the filename
+    # the shipped workflow asks for so an untouched graph resolves it.
+    CONTROLNET_REPO = "camenduru/Unique3D"
+    CONTROLNET_REPO_FILE = "controlnet-tile/diffusion_pytorch_model.safetensors"
+    CONTROLNET_FILE = "control_unique3d_sd15_tile.safetensors"
+
+    # The IPAdapter authors' own repo.
+    IPADAPTER_REPO = "h94/IP-Adapter"
+    IPADAPTER_REPO_FILE = "models/ip-adapter_sd15.safetensors"
+    IPADAPTER_FILE = "ip-adapter_sd15.safetensors"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    def download(self):
+        ckpt = _ensure_comfy_model("checkpoints", self.CKPT_FILE,
+                                   repo_id=self.CKPT_REPO, repo_file=self.CKPT_FILE)
+        clip = _ensure_comfy_model("clip_vision", self.CLIP_FILE,
+                                   repo_id=self.CLIP_REPO, repo_file=self.CLIP_REPO_FILE)
+        upscaler = _ensure_comfy_model("upscale_models", self.UPSCALER_FILE,
+                                       url=self.UPSCALER_URL)
+        controlnet = _ensure_comfy_model("controlnet", self.CONTROLNET_FILE,
+                                         repo_id=self.CONTROLNET_REPO,
+                                         repo_file=self.CONTROLNET_REPO_FILE)
+        ipadapter = _ensure_comfy_model("ipadapter", self.IPADAPTER_FILE,
+                                        repo_id=self.IPADAPTER_REPO,
+                                        repo_file=self.IPADAPTER_REPO_FILE)
+
+        cstr(f"[{self.__class__.__name__}] ready: {ckpt}, {clip}, {upscaler}, "
+             f"{controlnet}, {ipadapter}").msg.print()
+        return (ckpt, clip, upscaler, controlnet, ipadapter)
 
 
 class Load_Unique3D_Custom_UNet:
@@ -4670,13 +4759,17 @@ class Load_CRM_T2I_V3_Models:
                     "v0.1.0/RealESRGAN_x4plus.pth")
 
     # upscale_model_name is APPENDED so slots 0-1 keep their indices in saved
-    # graphs. Typed COMBO, not STRING: UpscaleModelLoader declares model_name as
-    # ("COMBO", {...}), and ComfyUI matches links on that type string -- a
-    # STRING output simply will not connect to it.
+    # graphs.
+    # "*" (ComfyUI's Any type), not "COMBO". A native loader's model_name input
+    # is typed as its OPTION LIST, not the string "COMBO", and
+    # comfy_execution.validation.validate_node_input compares the two directly:
+    #     received_type(COMBO) mismatch input_type(['RealESRGAN_x4plus.pth'])
+    # Only "*" short-circuits that check, so it is the one output type that
+    # will actually connect to a combo widget.
     RETURN_TYPES = (
         "T2IADAPTER_V2",
         "CRM_MVDIFFUSION_SAMPLER_V3",
-        "COMBO",
+        "*",
     )
     RETURN_NAMES = (
         "t2iadapter_v2",
