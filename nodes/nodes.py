@@ -5342,7 +5342,17 @@ class Load_Hunyuan3D_V1:
             CKPT_DIFFUSERS_PATH, cls._REPO_ID,
             ignore_patterns=HF_DOWNLOAD_IGNORE,
             allow_patterns=[f"{subfolder}/**", "svrm/**"],
-            requires=[f"{subfolder}/model_index.json", cls._SVRM],
+            # The sentinel has to be a file only a real download produces.
+            # This was f"{subfolder}/model_index.json" -- but the configs ship
+            # WITH this pack (they are git-tracked under model_configs/), so
+            # requires[] was satisfied before anything was fetched,
+            # download_repo returned early, and not one weight ever landed:
+            #     Error no file named diffusion_pytorch_model.bin found in
+            #     directory .../mvd_std/vae
+            # naming a directory that held only the config.json we shipped.
+            requires=[f"{subfolder}/unet/diffusion_pytorch_model.safetensors",
+                      f"{subfolder}/vae/diffusion_pytorch_model.safetensors",
+                      cls._SVRM],
         )
 
     def load(self, variant):
