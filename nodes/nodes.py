@@ -618,15 +618,28 @@ class Load_3D_Mesh:
         if not os.path.isabs(mesh_file_path):
             mesh_file_path = os.path.join(comfy_paths.input_directory, mesh_file_path)
         
-        if os.path.exists(mesh_file_path):
-            folder, filename = os.path.split(mesh_file_path)
-            if filename.lower().endswith(SUPPORTED_3D_EXTENSIONS):
-                with torch.inference_mode(not optimizable):
-                    mesh = Mesh.load(mesh_file_path, resize, renormal, retex, clean, resize_bound)
-            else:
-                cstr(f"[{self.__class__.__name__}] File name {filename} does not end with supported 3D file extensions: {SUPPORTED_3D_EXTENSIONS}").error.print()
-        else:        
-            cstr(f"[{self.__class__.__name__}] File {mesh_file_path} does not exist").error.print()
+        # Raise, do not return None on a TRIMESH socket.
+        #
+        # These branches used to print an error and hand None downstream, so a
+        # missing file surfaced several nodes later as
+        #   AttributeError: 'NoneType' object has no attribute 'v'
+        # inside the rasteriser, naming neither the file nor this node. The
+        # shipped workflows point at paths from upstream's Windows layout, so
+        # this is the common case, not an edge one.
+        if not os.path.exists(mesh_file_path):
+            raise FileNotFoundError(
+                f"[{self.__class__.__name__}] mesh not found: {mesh_file_path}. "
+                f"Paths are taken relative to ComfyUI's input directory "
+                f"({comfy_paths.input_directory}) unless absolute.")
+
+        folder, filename = os.path.split(mesh_file_path)
+        if not filename.lower().endswith(SUPPORTED_3D_EXTENSIONS):
+            raise ValueError(
+                f"[{self.__class__.__name__}] {filename} is not a supported 3D "
+                f"file; expected one of {SUPPORTED_3D_EXTENSIONS}.")
+
+        with torch.inference_mode(not optimizable):
+            mesh = Mesh.load(mesh_file_path, resize, renormal, retex, clean, resize_bound)
         return (_wire_out(mesh), )
     
 class Load_3DGS:
@@ -654,14 +667,21 @@ class Load_3DGS:
         if not os.path.isabs(gs_file_path):
             gs_file_path = os.path.join(comfy_paths.input_directory, gs_file_path)
         
-        if os.path.exists(gs_file_path):
-            folder, filename = os.path.split(gs_file_path)
-            if filename.lower().endswith(SUPPORTED_3DGS_EXTENSIONS):
-                gs_ply = PlyData.read(gs_file_path)
-            else:
-                cstr(f"[{self.__class__.__name__}] File name {filename} does not end with supported 3DGS file extensions: {SUPPORTED_3DGS_EXTENSIONS}").error.print()
-        else:        
-            cstr(f"[{self.__class__.__name__}] File {gs_file_path} does not exist").error.print()
+        # Raise rather than return None, for the same reason as Load_3D_Mesh:
+        # a None on a typed socket fails later, somewhere less informative.
+        if not os.path.exists(gs_file_path):
+            raise FileNotFoundError(
+                f"[{self.__class__.__name__}] 3DGS file not found: {gs_file_path}. "
+                f"Paths are taken relative to ComfyUI's input directory "
+                f"({comfy_paths.input_directory}) unless absolute.")
+
+        folder, filename = os.path.split(gs_file_path)
+        if not filename.lower().endswith(SUPPORTED_3DGS_EXTENSIONS):
+            raise ValueError(
+                f"[{self.__class__.__name__}] {filename} is not a supported 3DGS "
+                f"file; expected one of {SUPPORTED_3DGS_EXTENSIONS}.")
+
+        gs_ply = PlyData.read(gs_file_path)
         return (gs_ply, )
     
 class Save_3D_Mesh:
