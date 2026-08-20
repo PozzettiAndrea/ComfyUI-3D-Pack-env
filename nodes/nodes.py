@@ -2000,23 +2000,47 @@ def _enable_custom_xformers_processors(obj):
     """
     from diffusers.models.attention_processor import Attention
 
-    modules = getattr(obj, "modules", None)
-    if modules is None:
+    # obj is usually a DiffusionPipeline, which is NOT an nn.Module and has no
+    # .modules() -- an earlier version of this guarded on getattr(obj,
+    # "modules") and so silently did nothing, which is why Era3D kept failing
+    # with the wrong processor installed. Walk the pipeline's component modules
+    # instead, and accept a bare module too.
+    roots = []
+    if isinstance(obj, torch.nn.Module):
+        roots.append(obj)
+    else:
+        components = getattr(obj, "components", None)
+        if isinstance(components, dict):
+            roots.extend(c for c in components.values()
+                         if isinstance(c, torch.nn.Module))
+        if not roots:
+            for name in ("unet", "vae", "text_encoder", "image_encoder"):
+                c = getattr(obj, name, None)
+                if isinstance(c, torch.nn.Module):
+                    roots.append(c)
+    if not roots:
         return
+
     patched = 0
-    for m in modules():
-        if not isinstance(m, Attention):
-            continue
-        # Only subclasses that define their own override -- never the plain
-        # Attention, whose implementation is the one that just raised.
-        fn = type(m).set_use_memory_efficient_attention_xformers
-        if fn is Attention.set_use_memory_efficient_attention_xformers:
-            continue
-        try:
-            m.set_use_memory_efficient_attention_xformers(True)
-            patched += 1
-        except Exception:
-            pass
+    seen = set()
+    for root in roots:
+        for m in root.modules():
+            if id(m) in seen:
+                continue
+            seen.add(id(m))
+            if not isinstance(m, Attention):
+                continue
+            # Only subclasses that define their own override -- never the
+            # plain Attention, whose implementation is the one that just
+            # raised.
+            fn = type(m).set_use_memory_efficient_attention_xformers
+            if fn is Attention.set_use_memory_efficient_attention_xformers:
+                continue
+            try:
+                m.set_use_memory_efficient_attention_xformers(True)
+                patched += 1
+            except Exception:
+                pass
     if patched:
         cstr(f"[Comfy3D] installed {patched} model-specific xformers "
              f"processor(s), routed through the SDPA stand-in").msg.print()
