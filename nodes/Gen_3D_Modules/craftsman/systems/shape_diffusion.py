@@ -65,6 +65,16 @@ def ddim_sample(ddim_scheduler: DDIMScheduler,
 
     assert steps > 0, f"{steps} must > 0."
 
+    # Take the device from the conditioning rather than the `device` argument.
+    # Callers pass self.device, but BaseSystem extends pl.LightningModule, whose
+    # .device is a property backed by Lightning's own _device -- and that only
+    # tracks moves Lightning performs. ComfyUI relocates the weights through
+    # ModelPatcher, so _device stays "cpu" while every parameter is on cuda:0.
+    # The latents below already use cond.device, so trusting the argument put
+    # timestep_tensor on cpu and t_emb met context/x on cuda:
+    #   Expected all tensors to be on the same device ... (wrapper_CUDA_cat)
+    device = cond.device
+
     # init latents
     bsz = cond.shape[0]
     if do_classifier_free_guidance:
@@ -348,7 +358,9 @@ class ShapeDiffusionSystem(BaseSystem):
         latents = None
         
         if seed != None:
-            generator = torch.Generator(device="cuda").manual_seed(seed)
+            # Match the latents, which are created on cond.device; a generator
+            # on another device is rejected by torch.randn.
+            generator = torch.Generator(device=cond.device).manual_seed(seed)
         else:
             generator = None
             
