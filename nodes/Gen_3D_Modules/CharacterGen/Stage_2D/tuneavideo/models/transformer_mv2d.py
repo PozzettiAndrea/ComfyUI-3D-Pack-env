@@ -651,7 +651,13 @@ class MVAttnProcessor:
         attention_mask=None,
         temb=None,
         num_views=1,
-        multiview_attention=True
+        multiview_attention=True,
+        # Accepted so this processor is signature-compatible with
+        # XFormersMVAttnProcessor. refunet.py passes it unconditionally,
+        # so without it CharacterGen only ran when xformers was installed:
+        #   MVAttnProcessor.__call__() got an unexpected keyword
+        #   argument 'cross_domain_attention'
+        cross_domain_attention=False,
     ):
         residual = hidden_states
 
@@ -691,8 +697,21 @@ class MVAttnProcessor:
                 # after use xformer; possible to train with 6 views
                 # key = rearrange(key, "(b t) d c -> b (t d) c", t=num_views).repeat_interleave(num_views, dim=0)
                 # value = rearrange(value, "(b t) d c -> b (t d) c", t=num_views).repeat_interleave(num_views, dim=0)
+                key_raw, value_raw = key, value
                 key = rearrange(key, '(b t) d c-> b (t d) c', t=num_views).unsqueeze(1).repeat(1,num_views,1,1).flatten(0,1)
                 value = rearrange(value, '(b t) d c-> b (t d) c', t=num_views).unsqueeze(1).repeat(1,num_views,1,1).flatten(0,1)
+
+                if cross_domain_attention:
+                    # Same construction as XFormersMVAttnProcessor: swap the two
+                    # halves of the batch and concatenate, so each domain attends
+                    # to the other. Ported so the two processors agree rather than
+                    # having this one silently ignore the flag.
+                    key_0, key_1 = torch.chunk(key_raw, dim=0, chunks=2)
+                    value_0, value_1 = torch.chunk(value_raw, dim=0, chunks=2)
+                    key_cross = torch.concat([key_1, key_0], dim=0)
+                    value_cross = torch.concat([value_1, value_0], dim=0)
+                    key = torch.cat([key, key_cross], dim=1)
+                    value = torch.cat([value, value_cross], dim=1)
 
             else:# apply sparse attention
                 pass
