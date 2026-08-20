@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-import gpytoolbox
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -184,6 +183,14 @@ class Mesh:
         t_pos_idx = self.t_pos_idx.detach().cpu().numpy().astype(np.int32)
 
         # Remesh
+        # Imported here, not at module scope. gpytoolbox is used by this one
+        # call, but importing it eagerly puts every node in the pack behind it:
+        # a 0.3.0 resolve on NumPy 2 raises `np.Inf was removed` while loading
+        # reach_for_the_arcs, which aborted the metadata scan and registered 0
+        # of 97 nodes. A dependency only this function needs should only be
+        # able to break this function.
+        import gpytoolbox
+
         v_remesh, f_remesh = gpytoolbox.remesh_botsch(
             v_pos,
             t_pos_idx,
