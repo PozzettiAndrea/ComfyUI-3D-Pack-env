@@ -1810,22 +1810,42 @@ class Load_Triplane_Gaussian_Transformers:
 
         device = get_device()
 
-        cfg: ExperimentConfigTGS = load_config_tgs(self.config_file())
+        ckpt_path = resume_or_download_model_from_hf(
+            self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
 
-        ckpt_path = resume_or_download_model_from_hf(self.ckpt_dir(), self.default_repo_id, model_name, self.__class__.__name__)
-            
-        cfg.system.weights=ckpt_path
+        # Emit a recipe, not the model. TGS carries activation functions built
+        # as closures (get_activation returns a lambda), and a lambda has no
+        # importable qualname, so returning it live killed the worker at the
+        # transport:
+        #     Can't get local object 'get_activation.<locals>.<lambda>'
+        # Fourth loader of this shape, after instantmesh_lrm, crm_mvdiffusion
+        # and crm_recon.
+        cstr(f"[{self.__class__.__name__}] ckpt ready at {ckpt_path}").msg.print()
 
-        def build(_config):
-            # On CPU: the ModelPatcher decides when this reaches the GPU.
-            return TGS(cfg=cfg.system)
-
-        tgs_model = model_cache.managed("tgs", {"ckpt": ckpt_path}, build)
-
-        cstr(f"[{self.__class__.__name__}] loaded model ckpt from {ckpt_path}").msg.print()
-
-        return (tgs_model, )
+        return (model_cache.recipe(
+            "tgs",
+            ckpt=ckpt_path,
+            config=self.config_file(),
+        ), )
     
+def _build_tgs(config):
+    """Materialize a tgs recipe. Only on a cache miss."""
+    cfg: ExperimentConfigTGS = load_config_tgs(config["config"])
+    cfg.system.weights = config["ckpt"]
+    # On CPU: the ModelPatcher decides when this reaches the GPU.
+    return TGS(cfg=cfg.system)
+
+
+def resolve_tgs_model(config):
+    """TGS_MODEL recipe -> live model, cached across runs.
+
+    Non-dicts pass through, so consumers can call this unconditionally.
+    """
+    if not isinstance(config, dict):
+        return config
+    return model_cache.managed("tgs", config, _build_tgs, reloadable=True)
+
+
 class Triplane_Gaussian_Transformers:
     
     config_path = "TriplaneGaussian_config.yaml"
@@ -1860,7 +1880,11 @@ class Triplane_Gaussian_Transformers:
     FUNCTION = "run_TGS"
     CATEGORY = "Comfy3D/Algorithm"
     
-    def run_TGS(self, reference_image, reference_mask, tgs_model, cam_dist):        
+    def run_TGS(self, reference_image, reference_mask, tgs_model, cam_dist):
+
+        # A TGS_MODEL arrives as a recipe; resolve_tgs_model passes a live
+        # model straight through.
+        tgs_model = resolve_tgs_model(tgs_model)        
         cfg: ExperimentConfigTGS = load_config_tgs(self.config_file())
 
         cfg.data.cond_camera_distance = cam_dist
