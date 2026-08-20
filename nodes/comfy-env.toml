@@ -118,7 +118,15 @@ requests = "*"
 
 # Pure-python git deps upstream pulls from HEAD. Pinned here: unpinned HEAD
 # makes builds irreproducible, which is how upstream's my-reqs.txt drifted.
-utils3d = { git = "https://github.com/EasternJournalist/utils3d.git" }
+# PINNED. Unpinned this tracked HEAD and drifted to 1.7, which removed or
+# renamed eight functions TRELLIS and Stable3DGen call --
+#     AttributeError: module 'utils3d.torch' has no attribute
+#     'perspective_from_fov_xy'
+# and likewise intrinsics_from_fov_xy, rasterize_triangle_faces,
+# compute_edges, compute_dual_graph, compute_connected_components,
+# compute_edge_connected_components, remove_unreferenced_vertices.
+# This is the revision TRELLIS upstream pins; all eight are present in it.
+utils3d = { git = "https://github.com/EasternJournalist/utils3d.git", rev = "9a4eb15e4021b67b12c460c7057d642626897ec8" }
 kiui = { git = "https://github.com/ashawkey/kiuikit.git" }
 
 [env_vars]
