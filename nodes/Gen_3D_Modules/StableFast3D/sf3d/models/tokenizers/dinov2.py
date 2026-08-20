@@ -72,6 +72,31 @@ DINOV2_PRETRAINED_MODEL_ARCHIVE_LIST = [
 ]
 
 
+
+def _get_head_mask(model, head_mask, num_hidden_layers):
+    """What PreTrainedModel.get_head_mask used to do.
+
+    transformers 5.x dropped get_head_mask from ModuleUtilsMixin, so this
+    vendored Dinov2 raised "'Dinov2Model' object has no attribute
+    'get_head_mask'". Delegate when the model still has one (older
+    transformers), otherwise reproduce it: None -- which is every call in this
+    pack -- gives [None] * num_hidden_layers, and a supplied mask is broadened
+    to the 5-D per-layer shape the attention blocks index.
+    """
+    if hasattr(model, "get_head_mask"):
+        return model.get_head_mask(head_mask, num_hidden_layers)
+    if head_mask is None:
+        return [None] * num_hidden_layers
+    if head_mask.dim() == 1:
+        head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        head_mask = head_mask.expand(num_hidden_layers, -1, -1, -1, -1)
+    elif head_mask.dim() == 2:
+        head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+    if head_mask.dim() != 5:
+        raise ValueError(f"head_mask.dim != 5, instead {head_mask.dim()}")
+    return head_mask.to(dtype=next(model.parameters()).dtype)
+
+
 class Dinov2Embeddings(nn.Module):
     """
     Construct the CLS token, mask token, position and patch embeddings.
@@ -815,7 +840,7 @@ class Dinov2Model(Dinov2PreTrainedModel):
         # attention_probs has shape bsz x n_heads x N x N
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+        head_mask = _get_head_mask(self, head_mask, self.config.num_hidden_layers)
 
         embedding_output = self.embeddings(
             pixel_values, bool_masked_pos=bool_masked_pos
