@@ -55,8 +55,29 @@ def memory_efficient_attention(query, key, value, attn_bias=None, p=0.0,
             q, k, v, attn_mask=attn_bias, dropout_p=p, scale=scale)
         return out.transpose(1, 2)
 
-    return F.scaled_dot_product_attention(
-        query, key, value, attn_mask=attn_bias, dropout_p=p, scale=scale)
+    # 3D (B*H, M, K). Give SDPA a 4D tensor with a singleton head axis rather
+    # than passing this through as-is.
+    #
+    # SDPA's fused kernels REQUIRE 4 dimensions:
+    #     "All fused kernels requires query, key and value to be 4 dimensional,
+    #      but got Query dim: 3"
+    # so a 3D call silently falls back to the math backend, which materialises
+    # the full B*H x M x M score matrix. xformers never does that, which is the
+    # whole point of memory_efficient_attention -- so the shim turned a
+    # memory-efficient call into an allocation big enough to OOM a 24 GB card.
+    # Era3D hits it: at (160, 3584, 64) the matrix is 4.11 GB.
+    #
+    # Measured on that shape: 3D OOMs, 4D peaks at 0.15 GB, and the results
+    # agree to fp16 rounding.
+    q4 = query.unsqueeze(1)
+    k4 = key.unsqueeze(1)
+    v4 = value.unsqueeze(1)
+    mask = attn_bias
+    if isinstance(mask, torch.Tensor) and mask.dim() == 3:
+        mask = mask.unsqueeze(1)
+    out = F.scaled_dot_product_attention(
+        q4, k4, v4, attn_mask=mask, dropout_p=p, scale=scale)
+    return out.squeeze(1)
 
 
 # Shaped like the real package so `xformers.ops.memory_efficient_attention(...)`
