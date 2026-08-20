@@ -40,7 +40,20 @@ class UNetPP(nn.Module):
                 ),
             )
              
-        self.unet.enable_xformers_memory_efficient_attention()    
+        # xformers is deliberately not a dependency of this pack (see
+        # nodes/comfy-env.toml, and _try_enable_xformers in nodes.py which
+        # already guards the calls it owns). diffusers raises
+        # ModuleNotFoundError from attention_processor.py:405 when xformers is
+        # absent, which took the whole model build down:
+        #     ModuleNotFoundError: Refer to https://github.com/.../xformers ...
+        #
+        # Skipping is a backend change, not a lost optimisation. On torch 2.x
+        # diffusers already defaults to AttnProcessor2_0 -- PyTorch SDPA, which
+        # dispatches to flash kernels. This call was switching that default OFF.
+        try:
+            self.unet.enable_xformers_memory_efficient_attention()
+        except (ModuleNotFoundError, ImportError, ValueError):
+            pass
         if in_channels > 12:
             self.learned_plane = torch.nn.parameter.Parameter(torch.zeros([1,in_channels-12,256,256*3]))
 
