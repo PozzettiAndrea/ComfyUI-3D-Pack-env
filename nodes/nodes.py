@@ -1378,11 +1378,19 @@ class Get_Camposes_From_List_Indexed:
         # Parse the indexes string into a list of integers
         index_list = [int(index.strip()) for index in indexes.split(',')]
         
-        # Select the camposes at the specified indices
-        orbit_camera_poses = []
-        for pose_list in original_orbit_camera_poses:
-            new_pose_list = [pose_list[i] for i in index_list]
-            orbit_camera_poses.append(new_pose_list)
+        # An ORBIT_CAMPOSES is a list of N poses, each pose a 6-element
+        # [radius, elevation, azimuth, center_x, center_y, center_z] -- see
+        # compose_orbit_camposes(). This used to loop over the poses and index
+        # into each pose's six COMPONENTS:
+        #     for pose_list in original_orbit_camera_poses:
+        #         new_pose_list = [pose_list[i] for i in index_list]
+        # so "5, 3, 2, 0" against CRM's 6 poses returned 6 entries of
+        # [center_z, center_y, azimuth, radius] rather than 4 poses. The count
+        # never changed, which is why it went unnoticed for the 6-view presets:
+        # 6 poses in, 6 out, every field silently permuted. It only became an
+        # error once something downstream compared the pose count to the image
+        # count and found 4 images against 6 "poses".
+        orbit_camera_poses = [original_orbit_camera_poses[i] for i in index_list]
 
         return (orbit_camera_poses,)
 
