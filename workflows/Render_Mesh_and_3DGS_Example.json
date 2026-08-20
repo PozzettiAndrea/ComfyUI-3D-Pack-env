@@ -225,7 +225,7 @@
         "Node name for S&R": "[Comfy3D] Load 3D Mesh"
       },
       "widgets_values": [
-        ".\\example_workflows\\_Example_Inputs_Files\\Meshes\\Cammy_Uniform.obj",
+        "3d/bear_test.glb",
         false,
         false,
         false,
@@ -261,7 +261,7 @@
         "Node name for S&R": "[Comfy3D] Load 3DGS"
       },
       "widgets_values": [
-        ".\\example_workflows\\_Example_Inputs_Files\\Meshes\\CatCoffee.ply"
+        "3d/FatCat.ply"
       ]
     },
     {
