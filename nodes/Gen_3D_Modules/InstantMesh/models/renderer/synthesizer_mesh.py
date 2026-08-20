@@ -80,10 +80,24 @@ class OSGDecoder(nn.Module):
         sdf = self.net_sdf(sampled_features)
         deformation = self.net_deformation(sampled_features)
 
-        grid_features = torch.index_select(input=sampled_features, index=flexicubes_indices.reshape(-1), dim=1)
-        grid_features = grid_features.reshape(
-            sampled_features.shape[0], flexicubes_indices.shape[0], flexicubes_indices.shape[1] * sampled_features.shape[-1])
-        weight = self.net_weight(grid_features) * 0.1
+        # Gathered in chunks. The full gather gathers (num_cubes * 8) rows of
+        # sampled_features at once -- a 15.00 GiB allocation on a 23.56 GiB card
+        # here, which OOMed before net_weight ever ran. net_weight's OUTPUT is
+        # tiny by comparison (21 floats per cube), so only the intermediate
+        # needs bounding; chunking it changes nothing numerically, since every
+        # cube's weight depends on that cube's 8 corners and nothing else.
+        n_cubes, n_corners = flexicubes_indices.shape
+        feat_dim = sampled_features.shape[-1]
+        chunk = 1 << 17
+        weights = []
+        for start in range(0, n_cubes, chunk):
+            idx = flexicubes_indices[start:start + chunk]
+            grid_features = torch.index_select(
+                input=sampled_features, index=idx.reshape(-1), dim=1)
+            grid_features = grid_features.reshape(
+                sampled_features.shape[0], idx.shape[0], n_corners * feat_dim)
+            weights.append(self.net_weight(grid_features) * 0.1)
+        weight = torch.cat(weights, dim=1) if len(weights) > 1 else weights[0]
 
         return sdf, deformation, weight
     
