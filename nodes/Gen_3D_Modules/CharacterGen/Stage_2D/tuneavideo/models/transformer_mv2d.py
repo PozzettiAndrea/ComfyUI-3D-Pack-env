@@ -748,8 +748,23 @@ class MVAttnProcessor:
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
         
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
+        # get_attention_scores materialises the full (B*H, M, N) score matrix.
+        # With this model's batch that is a single 28.12 GiB allocation on a
+        # 23.56 GiB card -- it OOMed here on step 0. Upstream never hit it
+        # because it ran the XFormers processors; these plain ones only became
+        # reachable once xformers was dropped in favour of SDPA.
+        #
+        # unsqueeze(1): these are 3D (B*H, M, K) from head_to_batch_dim, and
+        # SDPA's fused kernels require 4D -- without the singleton head axis it
+        # silently falls back to the math backend and allocates exactly what we
+        # are trying to avoid. scale is passed explicitly because
+        # get_attention_scores applies attn.scale itself.
+        _mask = attention_mask
+        if isinstance(_mask, torch.Tensor) and _mask.dim() == 3:
+            _mask = _mask.unsqueeze(1)
+        hidden_states = F.scaled_dot_product_attention(
+            query.unsqueeze(1), key.unsqueeze(1), value.unsqueeze(1),
+            attn_mask=_mask, scale=attn.scale).squeeze(1)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
@@ -1016,8 +1031,23 @@ class JointAttnProcessor:
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
 
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
+        # get_attention_scores materialises the full (B*H, M, N) score matrix.
+        # With this model's batch that is a single 28.12 GiB allocation on a
+        # 23.56 GiB card -- it OOMed here on step 0. Upstream never hit it
+        # because it ran the XFormers processors; these plain ones only became
+        # reachable once xformers was dropped in favour of SDPA.
+        #
+        # unsqueeze(1): these are 3D (B*H, M, K) from head_to_batch_dim, and
+        # SDPA's fused kernels require 4D -- without the singleton head axis it
+        # silently falls back to the math backend and allocates exactly what we
+        # are trying to avoid. scale is passed explicitly because
+        # get_attention_scores applies attn.scale itself.
+        _mask = attention_mask
+        if isinstance(_mask, torch.Tensor) and _mask.dim() == 3:
+            _mask = _mask.unsqueeze(1)
+        hidden_states = F.scaled_dot_product_attention(
+            query.unsqueeze(1), key.unsqueeze(1), value.unsqueeze(1),
+            attn_mask=_mask, scale=attn.scale).squeeze(1)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
