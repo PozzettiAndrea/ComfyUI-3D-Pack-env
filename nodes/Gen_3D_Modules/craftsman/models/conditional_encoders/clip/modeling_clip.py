@@ -194,7 +194,18 @@ class CLIPVisionEmbeddings(nn.Module):
 
         class_embeds = self.class_embedding.expand(batch_size, 1, -1)
         embeddings = torch.cat([class_embeds, patch_embeds], dim=1)
-        embeddings = embeddings + self.position_embedding(self.position_ids)
+        # Derived here, not read from self.position_ids. That buffer is
+        # registered persistent=False, so it is absent from the checkpoint, and
+        # transformers 5 builds the model on the meta device and materialises
+        # anything missing with to_empty() -- which allocates uninitialised
+        # memory instead of re-running the arange in __init__. The shape and
+        # dtype survive, the contents do not: observed min/max of -5.2e18 and
+        # 4.4e18 against a 257-row table, which trips
+        #   vectorized_gather_kernel: ind >= 0 && ind < ind_dim_size
+        # as an async device-side assert that surfaces later at an unrelated
+        # line. Cheap to recompute; immune to how the model was constructed.
+        position_ids = torch.arange(self.num_positions, device=embeddings.device).expand((1, -1))
+        embeddings = embeddings + self.position_embedding(position_ids)
         return embeddings
 
 
@@ -220,7 +231,10 @@ class CLIPTextEmbeddings(nn.Module):
         seq_length = input_ids.shape[-1] if input_ids is not None else inputs_embeds.shape[-2]
 
         if position_ids is None:
-            position_ids = self.position_ids[:, :seq_length]
+            # Same reason as CLIPVisionEmbeddings.forward above: self.position_ids
+            # is a persistent=False buffer and may hold uninitialised memory.
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(seq_length, device=device).expand((1, -1))
 
         if inputs_embeds is None:
             inputs_embeds = self.token_embedding(input_ids)
