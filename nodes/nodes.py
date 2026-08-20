@@ -3455,6 +3455,21 @@ class InstantMesh_Reconstruction_Model:
             radius.append(orbit_camera_poses[i][0])
         input_cameras = oribt_camera_poses_to_input_cameras(azimuths, elevations, radius=radius, fov=orbit_camera_fovy).to(get_device())
 
+        # The view counts come from two independent inputs and nothing ties them
+        # together. When they disagree the tensors travel a long way before it
+        # matters -- the images set the batch, the cameras set adaLN's -- and it
+        # finally breaks inside DINO's modulate() as
+        #   The size of tensor a (4) must match the size of tensor b (6)
+        #     at non-singleton dimension 0
+        # twelve frames down, naming neither input. Say it here instead.
+        n_images, n_cameras = images.shape[1], input_cameras.shape[1]
+        if n_images != n_cameras:
+            raise ValueError(
+                f"multiview_images has {n_images} view(s) but orbit_camera_poses "
+                f"has {n_cameras}. InstantMesh needs one camera pose per view -- "
+                f"wire both from the same multiview source, or set the pose node "
+                f"to emit {n_images}.")
+
         # get triplane
         planes = lrm_model.forward_planes(images, input_cameras)
 
