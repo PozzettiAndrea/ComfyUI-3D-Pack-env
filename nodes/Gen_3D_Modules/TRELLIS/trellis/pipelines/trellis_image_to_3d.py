@@ -14,39 +14,71 @@ from ..representations import Gaussian, Strivec, MeshExtractResult
 
 
 
+
+#: DINOv2 variants TRELLIS asks for, with the exact constructor arguments
+#: facebookresearch/dinov2's hubconf uses, so the vendored model is numerically
+#: the model torch.hub used to hand back.
+_DINOV2_VARIANTS = {
+    "dinov2_vits14_reg":  dict(arch="vit_small", num_register_tokens=4,
+                               interpolate_antialias=True, interpolate_offset=0.0),
+    "dinov2_vitb14_reg":  dict(arch="vit_base",  num_register_tokens=4,
+                               interpolate_antialias=True, interpolate_offset=0.0),
+    "dinov2_vitl14_reg":  dict(arch="vit_large", num_register_tokens=4,
+                               interpolate_antialias=True, interpolate_offset=0.0),
+    "dinov2_vitg14_reg":  dict(arch="vit_giant2", num_register_tokens=4,
+                               interpolate_antialias=True, interpolate_offset=0.0,
+                               ffn_layer="swiglufused"),
+    "dinov2_vits14":      dict(arch="vit_small"),
+    "dinov2_vitb14":      dict(arch="vit_base"),
+    "dinov2_vitl14":      dict(arch="vit_large"),
+    "dinov2_vitg14":      dict(arch="vit_giant2", ffn_layer="swiglufused"),
+}
+
+_DINOV2_BASE_URL = "https://dl.fbaipublicfiles.com/dinov2"
+
+
 def _load_dinov2(name: str):
-    """Load a DINOv2 backbone without depending on GitHub or a token.
+    """Build a DINOv2 backbone from vendored code, with no GitHub involved.
 
-    torch.hub.load('facebookresearch/dinov2', ...) reaches the network twice:
-    once to the GitHub API to check the repo is not a fork, and once for the
-    repo zipball. Both are avoidable and both have bitten this pack:
+    This was torch.hub.load('facebookresearch/dinov2', ...), which fetched the
+    repo at runtime and, before that, called the GitHub API to check the repo is
+    not a fork. That API call carries $GITHUB_TOKEN when one is exported, so a
+    revoked token turned a request that succeeds ANONYMOUSLY into
 
-      * the API call sends $GITHUB_TOKEN when one is exported, so a stale or
-        revoked token turns a request that succeeds ANONYMOUSLY into
-        "HTTP Error 401: Unauthorized" and takes the pipeline down. The token
-        buys nothing -- the repo is hard-coded, not user-supplied.
-      * the zipball makes every cold start depend on github.com being up.
+        urllib.error.HTTPError: HTTP Error 401: Unauthorized
 
-    So: prefer the already-downloaded hub checkout and load it with
-    source='local', which touches no network at all. Only fall back to
-    fetching, and even then without the fork check and with the token hidden
-    for the duration of the call.
+    and took the pipeline down. It also made every cold start depend on
+    github.com being reachable, to fetch code that never changes.
+
+    The architecture now comes from trellis/modules/dinov2 (vendored, inference
+    subset only). Only the weights are downloaded, from dl.fbaipublicfiles.com
+    -- no credentials, not GitHub -- through torch's own cached download.
     """
-    import os
+    from ..modules.dinov2.models import vision_transformer as vits
 
-    hub_dir = os.path.join(torch.hub.get_dir(), "facebookresearch_dinov2_main")
-    if os.path.isdir(hub_dir):
-        return torch.hub.load(hub_dir, name, source="local", pretrained=True)
+    if name not in _DINOV2_VARIANTS:
+        raise ValueError(
+            f"unknown DINOv2 variant {name!r}; known: {sorted(_DINOV2_VARIANTS)}")
+    spec = dict(_DINOV2_VARIANTS[name])
+    arch = spec.pop("arch")
 
-    # Not cached yet. Fetch once, with the fork check off and without offering
-    # credentials that are not needed and may be invalid.
-    saved = {k: os.environ.pop(k) for k in ("GITHUB_TOKEN", "GH_TOKEN")
-             if k in os.environ}
-    try:
-        return torch.hub.load("facebookresearch/dinov2", name, pretrained=True,
-                              skip_validation=True, trust_repo=True)
-    finally:
-        os.environ.update(saved)
+    model = vits.__dict__[arch](
+        img_size=518, patch_size=14, init_values=1.0, block_chunks=0,
+        ffn_layer=spec.pop("ffn_layer", "mlp"),
+        num_register_tokens=spec.pop("num_register_tokens", 0),
+        interpolate_antialias=spec.pop("interpolate_antialias", False),
+        interpolate_offset=spec.pop("interpolate_offset", 0.1),
+    )
+
+    # Same filename scheme as upstream: dinov2_vitl14 -> dinov2_vitl14_reg4_pretrain
+    compact = {"vit_small": "vits14", "vit_base": "vitb14",
+               "vit_large": "vitl14", "vit_giant2": "vitg14"}[arch]
+    suffix = "_reg4" if name.endswith("_reg") else ""
+    url = f"{_DINOV2_BASE_URL}/dinov2_{compact}/dinov2_{compact}{suffix}_pretrain.pth"
+
+    state_dict = torch.hub.load_state_dict_from_url(url, map_location="cpu")
+    model.load_state_dict(state_dict, strict=True)
+    return model
 
 
 class TrellisImageTo3DPipeline(Pipeline):
