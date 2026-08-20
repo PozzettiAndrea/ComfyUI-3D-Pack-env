@@ -75,7 +75,9 @@ def make_beta_schedule(
         )
     else:
         raise ValueError(f"schedule '{schedule}' unknown.")
-    return betas.numpy()
+    # .cpu() for the same reason as interface.py: under a default-cuda
+    # context this schedule is built on the GPU, and numpy cannot take it.
+    return betas.cpu().numpy()
 
 def enforce_zero_terminal_snr(betas):
     betas = torch.tensor(betas) if not isinstance(betas, torch.Tensor) else betas

@@ -85,7 +85,13 @@ class LatentDiffusionInterface(nn.Module):
             )
         if zero_snr:
             print("--- using zero snr---")
-            betas = enforce_zero_terminal_snr(betas).numpy()
+            # .cpu() before .numpy(): this runs under a
+            # torch.set_default_device('cuda') context, so the tensor these
+            # schedule helpers build lands on the GPU and numpy refuses it --
+            #     can't convert cuda:0 device type tensor to numpy
+            # It is a 1000-element beta schedule; where it is computed does not
+            # matter, and the surrounding code is numpy from here on.
+            betas = enforce_zero_terminal_snr(betas).cpu().numpy()
         alphas = 1.0 - betas
         alphas_cumprod = np.cumprod(alphas, axis=0)
         alphas_cumprod_prev = np.append(1.0, alphas_cumprod[:-1])
