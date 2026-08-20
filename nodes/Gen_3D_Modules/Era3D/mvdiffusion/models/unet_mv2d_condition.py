@@ -1375,7 +1375,13 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        # Popped and dropped. diffusers renamed this to `token` and
+        # _get_model_file no longer accepts use_auth_token at all, which is
+        # what raised TypeError here. Everything this loads is a public repo,
+        # so rather than rename it we stop threading a credential through at
+        # all; the pop stays so an old caller passing it is ignored rather
+        # than landing in **kwargs.
+        kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
@@ -1428,7 +1434,6 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
             # resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
             revision=revision,
             subfolder=subfolder,
             device_map=device_map,
@@ -1487,7 +1492,6 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                         # resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -1506,7 +1510,6 @@ class UNetMV2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixi
                     # resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
