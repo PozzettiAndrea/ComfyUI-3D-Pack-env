@@ -24,6 +24,7 @@ from .volume_decoders import VanillaVolumeDecoder, FlashVDMVolumeDecoding, Hiera
 from ...utils import logger, synchronize_timer, smart_load_model
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -59,7 +60,7 @@ class VectsetVAE(nn.Module):
             import safetensors.torch
             ckpt = safetensors.torch.load_file(ckpt_path, device='cpu')
         else:
-            ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=True)
+            ckpt = comfy.utils.load_torch_file(ckpt_path)
 
         model_kwargs = config['params']
         model_kwargs.update(kwargs)

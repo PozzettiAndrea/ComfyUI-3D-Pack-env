@@ -26,6 +26,7 @@ from .utils.dehighlight_utils import Light_Shadow_Remover
 from .utils.multiview_utils import Multiview_Diffusion_Net
 from .utils.imagesuper_utils import Image_Super_Net
 from .utils.uv_warp_utils import mesh_uv_wrap
+import comfy.model_management
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class Hunyuan3DPaintPipeline:
 
     def load_models(self):
         # empty cude cache
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         # Load model
         self.models['delight_model'] = Light_Shadow_Remover(self.config)
         self.models['multiview_model'] = Multiview_Diffusion_Net(self.config)

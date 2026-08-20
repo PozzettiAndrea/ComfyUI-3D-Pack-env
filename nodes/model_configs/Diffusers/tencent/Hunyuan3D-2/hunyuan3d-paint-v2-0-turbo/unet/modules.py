@@ -36,6 +36,7 @@ from diffusers.models.transformers.transformer_2d import BasicTransformerBlock
 from einops import rearrange
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -468,7 +469,7 @@ class UNet2p5DConditionModel(torch.nn.Module):
             if dropped:
                 unet_ckpt = {k: v for k, v in unet_ckpt.items() if k in known}
         else:
-            unet_ckpt = torch.load(unet_ckpt_path, map_location='cpu', weights_only=True)
+            unet_ckpt = comfy.utils.load_torch_file(unet_ckpt_path)
         unet.load_state_dict(unet_ckpt, strict=True)
         unet = unet.to(torch_dtype)
         return unet

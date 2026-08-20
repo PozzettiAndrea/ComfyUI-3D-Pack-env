@@ -19,6 +19,7 @@ import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
 
 from .dinov2.hub.backbones import dinov2_vitb14
+import comfy.utils
 
 class FrozenDinoV2ImageEmbedder(nn.Module):
     """
@@ -46,7 +47,7 @@ class FrozenDinoV2ImageEmbedder(nn.Module):
 
     def load_pretrained(self, ckpt_path):
         print('Loading dinov2 encoder ...')
-        orig_state_dict = torch.load(ckpt_path, map_location='cpu')
+        orig_state_dict = comfy.utils.load_torch_file(ckpt_path)
         try:
             ret = self.model.load_state_dict(orig_state_dict, strict=False)
             print(ret)

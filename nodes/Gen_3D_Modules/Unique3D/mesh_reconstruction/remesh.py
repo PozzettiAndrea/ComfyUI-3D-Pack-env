@@ -76,7 +76,7 @@ def calc_face_normals(
         faces:torch.Tensor, #F,3 long, first face may be all zero
         normalize:bool=False,
         )->torch.Tensor: #F,3
-    """
+    r"""
          n
          |
          c0     corners ordered counterclockwise when

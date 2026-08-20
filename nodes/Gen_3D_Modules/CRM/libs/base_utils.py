@@ -70,7 +70,7 @@ def add_stroke(img, color=(255, 255, 255), stroke_radius=3):
     return Image.fromarray(cv2.cvtColor(res,cv2.COLOR_BGRA2RGBA))
 
 def make_blob(image_size=(512, 512), sigma=0.2):
-    """
+    r"""
     make 2D blob image with:
     I(x, y)=1-\exp \left(-\frac{(x-H / 2)^2+(y-W / 2)^2}{2 \sigma^2 HS}\right)
     """

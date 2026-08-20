@@ -21,6 +21,7 @@ from .utils import (
     get_spherical_cameras,
     scale_tensor,
 )
+import comfy.utils
 
 
 # transformers 5.x renamed ViT's internals: `encoder.layer.N.` -> `layers.N.`,
@@ -95,7 +96,7 @@ class TSR(BaseModule):
         cfg = OmegaConf.load(config_path)
         OmegaConf.resolve(cfg)
         model = cls(cfg)
-        ckpt = torch.load(weight_path, map_location="cpu")
+        ckpt = comfy.utils.load_torch_file(weight_path)
         model.load_state_dict(_remap_vit_keys(ckpt, model))
         return model
 

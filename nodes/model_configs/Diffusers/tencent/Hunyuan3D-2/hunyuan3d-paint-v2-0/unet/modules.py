@@ -265,6 +265,7 @@ class Basic2p5DTransformerBlock(torch.nn.Module):
         return hidden_states
 
 import copy
+import comfy.utils
 class UNet2p5DConditionModel(torch.nn.Module):
     def __init__(self, unet: UNet2DConditionModel) -> None:
         super().__init__()
@@ -292,7 +293,7 @@ class UNet2p5DConditionModel(torch.nn.Module):
             config = json.load(file)
         unet = UNet2DConditionModel(**config)
         unet = UNet2p5DConditionModel(unet)
-        unet_ckpt = torch.load(unet_ckpt_path, map_location='cpu', weights_only=True)
+        unet_ckpt = comfy.utils.load_torch_file(unet_ckpt_path)
         unet.load_state_dict(unet_ckpt, strict=True)
         unet = unet.to(torch_dtype)
         return unet

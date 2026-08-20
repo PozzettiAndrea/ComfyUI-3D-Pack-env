@@ -40,6 +40,7 @@ from PIL import Image
 from . import model_cache
 from .mesh_processer.interop import wire_in as _wire_in, wire_out as _wire_out
 from .mesh_processer.interop import _EXTRAS_KEY as _MESH_EXTRAS_KEY
+from .shared_utils.torch_pickle import load_raw_pickle
 from .shared_utils.model_downloader import (
     get_model_dir, download_file, download_files, download_repo, download_url,
 )
@@ -226,11 +227,10 @@ def _instantmesh_state_dict(ckpt_path, _allow_safetensors=True):
 
         return load_file(st_path, device="cpu")
 
-    # weights_only=True: this is a pickle from the internet and we want tensors
-    # from it, nothing else. torch>=2.6 defaults to it; be explicit so the
-    # intent survives a downgrade.
-    obj = torch.load(ckpt_path, map_location="cpu", weights_only=True)
-    state_dict = obj["state_dict"] if "state_dict" in obj else obj
+    # comfy.utils.load_torch_file loads with weights_only=True -- this is a
+    # pickle from the internet and we want tensors from it, nothing else -- and
+    # performs the "state_dict" unwrap this used to do by hand.
+    state_dict = comfy.utils.load_torch_file(ckpt_path)
     return {k[14:]: v for k, v in state_dict.items() if k.startswith("lrm_generator.")}
 
 
@@ -355,8 +355,7 @@ def _torch_load_vendored(ckpt_path, alias):
     shim.Pickler = pickle.Pickler
     shim.load = pickle.load
     shim.dump = pickle.dump
-    return torch.load(ckpt_path, map_location=torch.device("cpu"),
-                      weights_only=False, pickle_module=shim)
+    return load_raw_pickle(ckpt_path, pickle_module=shim)
 
 
 def _alias_model_index_libraries(base_dir):
@@ -2159,7 +2158,7 @@ def _build_diffusers_pipe(config):
             ckpt_path = resume_or_download_model_from_hf(
                 checkpoints_dir_abs, op["repo_id"], op["model_name"], "Set_Diffusers_Pipeline_State_Dict"
             )
-            state_dict = torch.load(ckpt_path, map_location='cpu')
+            state_dict = comfy.utils.load_torch_file(ckpt_path)
             pipe.unet.load_state_dict(state_dict, strict=True)
             _try_enable_xformers(pipe)
             pipe = pipe.to(get_device())
@@ -2503,7 +2502,7 @@ def _build_lgm(config):
     if ckpt_path.endswith('safetensors'):
         ckpt = load_file(ckpt_path, device='cpu')
     else:
-        ckpt = torch.load(ckpt_path, map_location='cpu')
+        ckpt = comfy.utils.load_torch_file(ckpt_path)
     model.load_state_dict(ckpt, strict=False)
     # .half() on CPU: casting before the patcher sees the model means it
     # measures the size that will actually be resident.
@@ -2985,7 +2984,7 @@ def _build_crm_mvdiffusion(config):
     crm_config = OmegaConf.load(config["config"])
 
     model = instantiate_from_config(crm_config.model)
-    model.load_state_dict(torch.load(config["ckpt"], map_location="cpu"), strict=False)
+    model.load_state_dict(comfy.utils.load_torch_file(config["ckpt"]), strict=False)
     # Placed on the device here, not left to model_cache.managed() as the
     # other builders do: the sampler below encodes the negative prompt in its
     # constructor, and that forward pass needs real weights on the same device
@@ -3227,7 +3226,7 @@ def _build_crm_recon(config):
     """Materialize a crm_recon recipe. Only on a cache miss."""
     crm_conf = json.load(open(config["config"]))
     model = ConvolutionalReconstructionModel(crm_conf)
-    model.load_state_dict(torch.load(config["ckpt"], map_location="cpu"), strict=False)
+    model.load_state_dict(comfy.utils.load_torch_file(config["ckpt"]), strict=False)
     return model
 
 
@@ -4053,7 +4052,7 @@ def _apply_unique3d_unet(pipe, config_name):
     configurable_unet = ConfigurableUNet2DConditionModel(init_config, WEIGHT_DTYPE)
     _try_enable_xformers(configurable_unet)
 
-    state_dict = torch.load(checkpoint_path)
+    state_dict = comfy.utils.load_torch_file(checkpoint_path)
     configurable_unet.unet.load_state_dict(state_dict, strict=False)
     configurable_unet.unet.to(get_device(), dtype=WEIGHT_DTYPE)
 
@@ -4892,7 +4891,7 @@ class Load_CRM_T2I_V2_Models:
         crm_config = OmegaConf.load(crm_config_path)
 
         crm_mvdiffusion_model = instantiate_from_config(crm_config.model)
-        crm_mvdiffusion_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
+        crm_mvdiffusion_model.load_state_dict(comfy.utils.load_torch_file(ckpt_path), strict=False)
         crm_mvdiffusion_model.device = get_device()
         
         crm_mvdiffusion_model.clip_model = crm_mvdiffusion_model.clip_model.to(get_device(), dtype=WEIGHT_DTYPE)
@@ -4980,7 +4979,7 @@ class CRM_T2I_V2_Models:
         ).to(dtype=reference_image.dtype, device=reference_image.device)
             
         gc.collect()
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
 
         orbit_radius = [1.63634] * 6
         orbit_center = [0.0] * 6
@@ -5107,7 +5106,7 @@ class Load_CRM_T2I_V3_Models:
         crm_config = OmegaConf.load(crm_config_path)
 
         crm_mvdiffusion_model = instantiate_from_config(crm_config.model)
-        crm_mvdiffusion_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
+        crm_mvdiffusion_model.load_state_dict(comfy.utils.load_torch_file(ckpt_path), strict=False)
         crm_mvdiffusion_model.device = get_device()
         
         crm_mvdiffusion_model.clip_model = crm_mvdiffusion_model.clip_model.to(get_device(), dtype=WEIGHT_DTYPE)
@@ -5123,7 +5122,7 @@ class Load_CRM_T2I_V3_Models:
         self.inject_lora(mvdiffusion_model, rank, use_dora)
         
         pretrained_lora_model_path = os.path.join(self.crm_t2i_v3_ckpt_dir(), crm_t2i_v3_model_name)
-        unet.load_state_dict(torch.load(pretrained_lora_model_path, map_location="cpu"), strict=False)
+        unet.load_state_dict(comfy.utils.load_torch_file(pretrained_lora_model_path), strict=False)
         
         upscale_model_name = _ensure_upscale_model(self.UPSCALER_URL, self.UPSCALER_NAME)
 
@@ -5240,7 +5239,7 @@ class CRM_T2I_V3_Models:
             output_images[i_branch] = torch.cat(all_multiview_images[i_branch], dim=0).to(reference_image.device, dtype=reference_image.dtype)
             
         gc.collect()
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
 
         orbit_radius = [1.63634] * 6
         orbit_center = [0.0] * 6
@@ -7388,7 +7387,7 @@ class Hunyuan3D_21_TexGen:
             
         finally:
             # Clean up files
-            torch.cuda.empty_cache()
+            comfy.model_management.soft_empty_cache()
             gc.collect()
             
             for file_path in [image_path, output_path]:

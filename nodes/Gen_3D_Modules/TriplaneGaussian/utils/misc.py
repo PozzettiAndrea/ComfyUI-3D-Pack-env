@@ -5,6 +5,7 @@ import torch
 from packaging import version
 
 from .typing import *
+import comfy.utils
 
 
 def parse_version(ver: str):
@@ -34,8 +35,9 @@ def load_module_weights(
     if map_location is None:
         map_location = get_device()
 
-    ckpt = torch.load(path, map_location=map_location)
-    state_dict = ckpt["state_dict"]
+    ckpt = comfy.utils.load_torch_file(path)
+    # load_torch_file already unwraps a "state_dict" wrapper key.
+    state_dict = ckpt
     state_dict_to_load = state_dict
 
     if ignore_modules is not None:

@@ -309,7 +309,7 @@ class ShapeDiffusionSystem(BaseSystem):
                 mesh_v_f[0][0], mesh_v_f[0][1]
             )
             # exit()
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
 
         return {"val/loss": out["loss_diffusion"]}
 

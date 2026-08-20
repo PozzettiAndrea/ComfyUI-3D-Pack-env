@@ -218,7 +218,7 @@ def hierarchical_extract_geometry(geometric_func: Callable,
         # breakpoint()
         high_res_occupancy[indices[:, 0], indices[:, 1], indices[:, 2]] = values
         grid_logits = high_res_occupancy
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
     mesh_v_f = []
     try:
         print("final grids shape = ", grid_logits.shape)
@@ -227,7 +227,7 @@ def hierarchical_extract_geometry(geometric_func: Callable,
         mesh_v_f = (vertices.astype(np.float32), np.ascontiguousarray(faces))
     except Exception as e:
         print(e)
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         mesh_v_f = (None, None)
 
     return [mesh_v_f]
@@ -491,7 +491,7 @@ def flash_extract_geometry(
         grid_logits = next_logits.unsqueeze(0)
     
     grid_logits[grid_logits == -10000.] = float('nan')
-    torch.cuda.empty_cache()
+    comfy.model_management.soft_empty_cache()
     mesh_v_f = []
     grid_logits = grid_logits[0]
     try:
@@ -506,7 +506,7 @@ def flash_extract_geometry(
         mesh_v_f = (vertices.astype(np.float32), np.ascontiguousarray(faces))
     except Exception as e:
         print(e)
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         mesh_v_f = (None, None)
 
     return [mesh_v_f]

@@ -61,6 +61,7 @@ from transformers import (
 import comfy.utils
 
 from .utils import to_rgb_image, white_out_background, recenter_img
+from ....shared_utils.torch_pickle import load_raw_pickle
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -475,6 +476,10 @@ class HunYuan3D_MVD_Std_Pipeline(diffusers.DiffusionPipeline):
     def from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs):
         # uc_text_emb.pt and uc_text_emb_2.pt are inferenced and saved in advance
         pipeline = super().from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
-        pipeline.uc_text_emb = torch.load(os.path.join(pretrained_model_name_or_path, "uc_text_emb.pt"))
-        pipeline.uc_text_emb_2 = torch.load(os.path.join(pretrained_model_name_or_path, "uc_text_emb_2.pt"))
+        # These two files hold a bare tensor, not a mapping, so
+        # comfy.utils.load_torch_file cannot read them -- it tests
+        # `"state_dict" in obj`, which raises on a Tensor. See
+        # shared_utils/torch_pickle.py for why this is the one exception.
+        pipeline.uc_text_emb = load_raw_pickle(os.path.join(pretrained_model_name_or_path, "uc_text_emb.pt"))
+        pipeline.uc_text_emb_2 = load_raw_pickle(os.path.join(pretrained_model_name_or_path, "uc_text_emb_2.pt"))
         return pipeline

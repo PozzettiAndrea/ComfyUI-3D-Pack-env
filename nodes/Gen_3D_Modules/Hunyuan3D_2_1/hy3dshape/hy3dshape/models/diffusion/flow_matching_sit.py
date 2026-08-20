@@ -11,6 +11,7 @@ from pytorch_lightning.utilities import rank_zero_only
 
 from ...utils.ema import LitEma
 from ...utils.misc import instantiate_from_config, instantiate_non_trainable_model
+import comfy.utils
 
 
 
@@ -135,7 +136,7 @@ class Diffuser(pl.LightningModule):
                     print(f"{context}: Restored training weights")
 
     def init_from_ckpt(self, path, ignore_keys=()):
-        ckpt = torch.load(path, map_location="cpu")
+        ckpt = comfy.utils.load_torch_file(path)
         if 'state_dict' not in ckpt:
             # deepspeed ckpt
             state_dict = {}

@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 from einops import rearrange, repeat
 
 from .utils.train_util import instantiate_from_config
+import comfy.utils
 
 
 class MVRecon(pl.LightningModule):
@@ -27,8 +28,8 @@ class MVRecon(pl.LightningModule):
         # init modules
         self.lrm_generator = instantiate_from_config(lrm_generator_config)
         if lrm_path is not None:
-            lrm_ckpt = torch.load(lrm_path)
-            self.lrm_generator.load_state_dict(lrm_ckpt['weights'], strict=False)
+            lrm_ckpt = comfy.utils.load_torch_file(lrm_path)
+            self.lrm_generator.load_state_dict(lrm_ckpt.get('weights', lrm_ckpt), strict=False)
 
         self.lpips = LearnedPerceptualImagePatchSimilarity(net_type='vgg')
         

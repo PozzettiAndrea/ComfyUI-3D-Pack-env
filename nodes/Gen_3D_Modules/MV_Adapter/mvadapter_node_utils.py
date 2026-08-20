@@ -25,6 +25,7 @@ from .mvadapter.utils.mesh_utils import (
 )
 from .mvadapter.utils import make_image_grid, tensor_to_image
 from .mvadapter.utils.geometry import get_plucker_embeds_from_cameras_ortho
+import comfy.model_management
 
 try:
     from mmgp import offload, profile_type
@@ -96,7 +97,7 @@ def prepare_pipeline(
     # Apply mmgp optimization if available and requested
     if use_mmgp and MMGP_AVAILABLE:
         import gc
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
         
         all_models = {
@@ -295,7 +296,7 @@ def prepare_texture_pipeline(
     # Apply mmgp optimization if available and requested
     if use_mmgp and MMGP_AVAILABLE:
         import gc
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
         
         all_models = {}
@@ -504,7 +505,7 @@ def prepare_tg2mv_pipeline(
         adapter_local_path: Local path for adapter download
     """
     import gc
-    torch.cuda.empty_cache()
+    comfy.model_management.soft_empty_cache()
     gc.collect()
     
     pipe_kwargs = {}
@@ -543,7 +544,7 @@ def prepare_tg2mv_pipeline(
             print("[INFO] CPU offload enabled to save VRAM")
 
     if use_mmgp and MMGP_AVAILABLE:
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
         
         all_models = {
@@ -563,7 +564,7 @@ def prepare_tg2mv_pipeline(
         except Exception as e:
             print(f"[WARNING] mmgp failed, continuing without it: {e}")
     
-    torch.cuda.empty_cache()
+    comfy.model_management.soft_empty_cache()
     gc.collect()
 
     return pipe

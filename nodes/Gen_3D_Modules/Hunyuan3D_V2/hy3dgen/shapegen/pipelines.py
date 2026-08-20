@@ -166,10 +166,10 @@ class Hunyuan3DDiTPipeline:
                     ckpt[model_name] = {}
                 ckpt[model_name][new_key] = value
         else:
-            ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=True)
+            ckpt = comfy.utils.load_torch_file(ckpt_path)
         # load model
         model = instantiate_from_config(config['model'])
-        model.load_state_dict(ckpt['model'])
+        model.load_state_dict(ckpt.get('model', ckpt))
         vae = instantiate_from_config(config['vae'])
         vae.load_state_dict(ckpt['vae'])
         conditioner = instantiate_from_config(config['conditioner'])

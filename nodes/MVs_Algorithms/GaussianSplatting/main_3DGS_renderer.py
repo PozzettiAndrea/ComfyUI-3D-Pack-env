@@ -780,7 +780,7 @@ class GaussianModel:
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
         self.prune_points(prune_mask)
 
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
     
 class GaussianSplattingRenderer:
     def __init__(self, sh_degree=3, white_background=True, radius=1):

@@ -21,6 +21,7 @@ from ...stable_trellis_model_manager import TrellisModelManager as StableTrellis
 
 import os
 import logging
+import comfy.model_management
 
 logger = logging.getLogger("IF_Hi3DGen")
 
@@ -240,7 +241,7 @@ class TrellisImageTo3DPipeline(Pipeline):
                 del self.models[key]
         
         # Force memory cleanup
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
         
         # Restore essential properties
@@ -256,7 +257,7 @@ class TrellisImageTo3DPipeline(Pipeline):
             if key in self.models:
                 self._models_cpu[key] = self.models[key].cpu()
                 del self.models[key]
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
 
     def load_models(self, model_keys: List[str]):
@@ -353,7 +354,7 @@ class TrellisImageTo3DPipeline(Pipeline):
                 self.unload_models(['slat_decoder_rf'])
             
             # Force garbage collection after each format
-            torch.cuda.empty_cache()
+            comfy.model_management.soft_empty_cache()
             gc.collect()
             
         return ret
@@ -442,12 +443,12 @@ class TrellisImageTo3DPipeline(Pipeline):
         
         # Generate sparse structure
         coords = self.sample_sparse_structure(cond, num_samples, sparse_structure_sampler_params)
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
         
         # Generate SLAT
         slat = self.sample_slat(cond, coords, slat_sampler_params)
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
 
         # Unload all models but don't do full cleanup
@@ -455,7 +456,7 @@ class TrellisImageTo3DPipeline(Pipeline):
         
         # Process formats one at a time
         results = self.decode_slat(slat, formats)
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         gc.collect()
         
         return results
@@ -577,5 +578,5 @@ class TrellisImageTo3DPipeline(Pipeline):
                         del self.models[key]
             
             # Force memory cleanup
-            torch.cuda.empty_cache()
+            comfy.model_management.soft_empty_cache()
             gc.collect()

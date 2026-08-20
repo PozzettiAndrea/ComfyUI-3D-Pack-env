@@ -44,6 +44,7 @@ from ..modules.rendering_neus.rasterize import NVDiffRasterizerContext
 from ..utils.ops import scale_tensor
 from ..util import count_params, instantiate_from_config
 from ..vis_util import render
+import comfy.model_management
 
 
 def unwrap_uv(v_pos, t_pos_idx):
@@ -148,10 +149,10 @@ class SVRMModel(torch.nn.Module):
 		input_view_feat = rearrange(input_view_feat, '(b m) l d -> b (l m) d', m=input_view_num)
 
 		# -- decoder
-		torch.cuda.empty_cache()
+		comfy.model_management.soft_empty_cache()
 		triplane_gen = self.img_to_triplane_decoder(input_view_feat)  # [b, 3, tri_dim, h, w]
 		del input_view_feat
-		torch.cuda.empty_cache()
+		comfy.model_management.soft_empty_cache()
 
 		# --- triplane nerf render
 

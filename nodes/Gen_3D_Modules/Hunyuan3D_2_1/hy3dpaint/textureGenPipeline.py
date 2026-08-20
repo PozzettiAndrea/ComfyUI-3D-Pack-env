@@ -141,7 +141,7 @@ class Hunyuan3DPaintPipeline:
         self.load_models()
 
     def load_models(self):
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         self.models["super_model"] = imageSuperNet(self.config)
         self.models["multiview_model"] = multiviewDiffusionNet(self.config)
         print("Models Loaded.")

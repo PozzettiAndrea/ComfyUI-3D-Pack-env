@@ -12,6 +12,7 @@ from spandrel import ModelLoader
 from ..utils import image_to_tensor, make_image_grid, tensor_to_image
 from ..utils.mesh_utils import Camera, CameraProjection, NVDiffRastContextWrapper, SmartPainter, TexturedMesh, get_camera, get_orthogonal_camera, load_mesh, render, replace_mesh_texture_and_save
 from ..utils.mesh_utils.mesh_process import process_raw
+import comfy.model_management
 
 # Import dilate function to remove texture seams
 def torch_image_dilate(img):
@@ -33,7 +34,7 @@ def torch_image_dilate(img):
 
 
 def clear():
-    torch.cuda.empty_cache()
+    comfy.model_management.soft_empty_cache()
 
 
 @contextmanager

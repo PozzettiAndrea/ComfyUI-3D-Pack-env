@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 from einops import rearrange, repeat
 
 from .utils.train_util import instantiate_from_config
+import comfy.utils
 
 
 # Regulrarization loss for FlexiCubes
@@ -44,7 +45,7 @@ class MVRecon(pl.LightningModule):
         # Load weights from pretrained MVRecon model, and use the mlp 
         # weights to initialize the weights of sdf and rgb mlps.
         if init_ckpt is not None:
-            sd = torch.load(init_ckpt, map_location='cpu')['state_dict']
+            sd = comfy.utils.load_torch_file(init_ckpt)
             sd = {k: v for k, v in sd.items() if k.startswith('lrm_generator')}
             sd_fc = {}
             for k, v in sd.items():

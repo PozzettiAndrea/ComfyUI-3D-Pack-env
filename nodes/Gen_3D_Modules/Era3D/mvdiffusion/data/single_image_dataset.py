@@ -12,6 +12,7 @@ import PIL.Image
 
 import cv2
 import numpy as np
+import comfy.utils
 
 def add_margin(pil_img, color=0, size=256):
     width, height = pil_img.size
@@ -125,11 +126,20 @@ class SingleImageDataset(Dataset):
         self.all_images = self.all_images[:num_validation_samples]
         self.all_alphas = self.all_alphas[:num_validation_samples]
         
+        # .safetensors, not .pt. These files hold a single bare tensor, which
+        # comfy.utils.load_torch_file cannot read -- it expects a mapping and
+        # tests `"state_dict" in ...`, which raises on a Tensor. Re-saved as
+        # safetensors under an "embeds" key so the ComfyUI loader can read them
+        # (and so the pack ships one less pickle). Converted losslessly:
+        # torch.equal against the originals.
         try:
-            self.normal_text_embeds = torch.load(f'{prompt_embeds_path}/normal_embeds.pt')
-            self.color_text_embeds = torch.load(f'{prompt_embeds_path}/clr_embeds.pt') # 4view
-        except:
-            self.color_text_embeds = torch.load(f'{prompt_embeds_path}/embeds.pt')
+            self.normal_text_embeds = comfy.utils.load_torch_file(
+                f'{prompt_embeds_path}/normal_embeds.safetensors')["embeds"]
+            self.color_text_embeds = comfy.utils.load_torch_file(
+                f'{prompt_embeds_path}/clr_embeds.safetensors')["embeds"]  # 4view
+        except Exception:
+            self.color_text_embeds = comfy.utils.load_torch_file(
+                f'{prompt_embeds_path}/embeds.safetensors')["embeds"]
             self.normal_text_embeds = None
 
     def __len__(self):

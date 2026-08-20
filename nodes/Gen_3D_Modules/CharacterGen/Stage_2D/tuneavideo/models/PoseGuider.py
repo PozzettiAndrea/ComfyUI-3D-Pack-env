@@ -5,6 +5,7 @@ import torch.nn.init as init
 from einops import rearrange
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -56,7 +57,7 @@ class PoseGuider(nn.Module):
             print(f"There is no model file in {pretrained_model_path}")
         print(f"loaded PoseGuider's pretrained weights from {pretrained_model_path} ...")
 
-        state_dict = torch.load(pretrained_model_path, map_location="cpu")
+        state_dict = comfy.utils.load_torch_file(pretrained_model_path)
         model = PoseGuider(noise_latent_channels=4)
         m, u = model.load_state_dict(state_dict, strict=False)
         print(f"### missing keys: {len(m)}; \n### unexpected keys: {len(u)};")        

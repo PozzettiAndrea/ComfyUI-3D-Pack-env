@@ -12,6 +12,7 @@ import json
 import importlib  # Import the importlib module
 from .trellis_fork.modules.utils import convert_module_to_f16, convert_module_to_f32
 from ..._vendor_paths import import_module as _vendor_import
+import comfy.utils
 
 logger = logging.getLogger('model_manager')
 
@@ -195,10 +196,10 @@ class TrellisModelManager:
                     f"unknown DINOv2 model {model_name!r}; available: {available}")
             model = factory(pretrained=False)
             
-            state_dict = torch.load(weights_path, map_location='cpu')
+            state_dict = comfy.utils.load_torch_file(weights_path)
             
             if 'model' in state_dict:
-                state_dict = state_dict['model']
+                state_dict = state_dict.get('model', state_dict)
             elif 'state_dict' in state_dict:
                 state_dict = state_dict['state_dict']
             

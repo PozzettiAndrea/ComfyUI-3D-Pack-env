@@ -12,6 +12,7 @@ from ..transformers.utils import init_linear, MLP
 from ...utils.base import BaseModule
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -149,7 +150,7 @@ class SimpleDenoiser(BaseModule):
             self.context_embed = ops.Linear(self.cfg.context_dim, self.cfg.width)
         
         if self.cfg.pretrained_model_name_or_path:
-            pretrained_ckpt = torch.load(self.cfg.pretrained_model_name_or_path, map_location="cpu")
+            pretrained_ckpt = comfy.utils.load_torch_file(self.cfg.pretrained_model_name_or_path)
             _pretrained_ckpt = {}
             for k, v in pretrained_ckpt.items():
                 if k.startswith('denoiser_model.'):

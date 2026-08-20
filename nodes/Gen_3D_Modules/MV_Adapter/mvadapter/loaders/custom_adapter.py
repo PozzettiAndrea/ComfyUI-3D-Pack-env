@@ -6,6 +6,7 @@ import torch
 from diffusers.utils import _get_model_file, logging
 from safetensors import safe_open
 from huggingface_hub import snapshot_download
+import comfy.utils
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -89,7 +90,7 @@ class CustomAdapterMixin:
                     for key in f.keys():
                         state_dict[key] = f.get_tensor(key)
             else:
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = comfy.utils.load_torch_file(model_file)
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 

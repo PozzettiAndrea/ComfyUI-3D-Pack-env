@@ -9,6 +9,7 @@ from ..util import instantiate_from_config
 from ..modules.ema import LitEma
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -57,7 +58,7 @@ class AutoencoderKL(torch.nn.Module):
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
 
     def init_from_ckpt(self, path, ignore_keys=list()):
-        sd = torch.load(path, map_location="cpu")["state_dict"]
+        sd = comfy.utils.load_torch_file(path)
         keys = list(sd.keys())
         for k in keys:
             for ik in ignore_keys:

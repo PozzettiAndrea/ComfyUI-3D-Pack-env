@@ -11,6 +11,8 @@ from packaging import version
 from ... import lrm
 from .config import config_to_primitive
 from .typing import *
+import comfy.model_management
+import comfy.utils
 
 
 def parse_version(ver: str):
@@ -40,8 +42,9 @@ def load_module_weights(
     if map_location is None:
         map_location = get_device()
 
-    ckpt = torch.load(path, map_location=map_location)
-    state_dict = ckpt["state_dict"]
+    ckpt = comfy.utils.load_torch_file(path)
+    # load_torch_file already unwraps a "state_dict" wrapper key.
+    state_dict = ckpt
 
     if mapping is not None:
         state_dict_to_load = {}
@@ -107,7 +110,7 @@ def C(value: Any, epoch: int, global_step: int) -> float:
 
 def cleanup():
     gc.collect()
-    torch.cuda.empty_cache()
+    comfy.model_management.soft_empty_cache()
     try:
         import tinycudann as tcnn
 

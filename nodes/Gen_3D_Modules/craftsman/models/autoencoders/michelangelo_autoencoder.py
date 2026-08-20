@@ -16,6 +16,7 @@ from ...utils.typing import *
 from .utils import AutoEncoder, FourierEmbedder, get_embedder
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -269,10 +270,10 @@ class MichelangeloAutoencoder(AutoEncoder):
 
         if self.cfg.pretrained_model_name_or_path != "":
             print(f"Loading pretrained model from {self.cfg.pretrained_model_name_or_path}")
-            pretrained_ckpt = torch.load(self.cfg.pretrained_model_name_or_path, map_location="cpu")
+            pretrained_ckpt = comfy.utils.load_torch_file(self.cfg.pretrained_model_name_or_path)
             if 'state_dict' in pretrained_ckpt:
                 _pretrained_ckpt = {}
-                for k, v in pretrained_ckpt['state_dict'].items():
+                for k, v in pretrained_ckpt.items():
                     if k.startswith('shape_model.'):
                         _pretrained_ckpt[k.replace('shape_model.', '')] = v
                 pretrained_ckpt = _pretrained_ckpt

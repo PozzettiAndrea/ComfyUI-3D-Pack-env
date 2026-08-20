@@ -330,7 +330,7 @@ class MultiviewLRM(BaseSystem):
         if self.global_rank == 0:
             self.save_img_sequences(
                 f"it{self.true_global_step}-test",
-                "(\d+)\.png",
+                r"(\d+)\.png",
                 save_format="mp4",
                 fps=30,
             )

@@ -137,7 +137,7 @@ class MVAdapterI2MVSDXLPipeline(StableDiffusionXLPipeline, CustomAdapterMixin):
         # Offload text encoder if `enable_model_cpu_offload` was enabled
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.text_encoder_2.to("cpu")
-            torch.cuda.empty_cache()
+            comfy.model_management.soft_empty_cache()
 
         image = image.to(device=device, dtype=dtype)
 

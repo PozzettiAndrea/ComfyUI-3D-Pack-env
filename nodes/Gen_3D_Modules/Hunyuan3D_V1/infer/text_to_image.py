@@ -24,6 +24,7 @@ import torch
 from .utils import seed_everything, timing_decorator, auto_amp_inference
 from .utils import get_parameter_number, set_parameter_grad_false
 from diffusers import HunyuanDiTPipeline, AutoPipelineForText2Image
+import comfy.model_management
 
 class Text2Image():
     def __init__(self, pretrain="./weights/hunyuanDiT", device="cuda:0", save_memory=False):
@@ -52,12 +53,12 @@ class Text2Image():
     def __call__(self, *args, **kwargs):
         if self.save_memory:
             self.pipe = self.pipe.to(self.device)
-            torch.cuda.empty_cache()
+            comfy.model_management.soft_empty_cache()
             res = self.call(*args, **kwargs)
             self.pipe = self.pipe.to("cpu")
         else:
             res = self.call(*args, **kwargs)
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         return res
 
     def call(self, prompt, seed=0, steps=25):
@@ -75,6 +76,6 @@ class Text2Image():
         if seed is not None: generator = generator.manual_seed(int(seed))
         rgb = self.pipe(prompt=prompt, negative_prompt=self.neg_txt, num_inference_steps=steps, 
             pag_scale=1.3, width=1024, height=1024, generator=generator, return_dict=False)[0][0]
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         return rgb
     

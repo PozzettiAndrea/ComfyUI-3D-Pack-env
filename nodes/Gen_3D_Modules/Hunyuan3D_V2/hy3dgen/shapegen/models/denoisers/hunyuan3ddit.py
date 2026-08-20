@@ -22,6 +22,7 @@ from einops import rearrange
 from torch import Tensor, nn
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -365,7 +366,7 @@ class Hunyuan3DDiT(nn.Module):
         if ckpt_path is not None:
             print('restored denoiser ckpt', ckpt_path)
 
-            ckpt = torch.load(ckpt_path, map_location="cpu")
+            ckpt = comfy.utils.load_torch_file(ckpt_path)
             if 'state_dict' not in ckpt:
                 # deepspeed ckpt
                 state_dict = {}

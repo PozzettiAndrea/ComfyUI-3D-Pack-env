@@ -35,6 +35,7 @@ from .attn_processor import SelfAttnProcessor2_0, RefAttnProcessor2_0, PoseRoPEA
 from transformers import AutoImageProcessor, AutoModel
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -840,7 +841,7 @@ class UNet2p5DConditionModel(torch.nn.Module):
             groups=unet.conv_in.groups,
             bias=unet.conv_in.bias is not None,
         )
-        unet_ckpt = torch.load(unet_ckpt_path, map_location="cpu", weights_only=True)
+        unet_ckpt = comfy.utils.load_torch_file(unet_ckpt_path)
         unet_2p5d.load_state_dict(unet_ckpt, strict=True)
         unet_2p5d = unet_2p5d.to(torch_dtype)
         return unet_2p5d

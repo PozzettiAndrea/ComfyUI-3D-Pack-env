@@ -25,6 +25,8 @@ from .Stage_3D import lrm
 from datetime import datetime
 from pygltflib import GLTF2
 import pymeshlab
+import comfy.model_management
+import comfy.utils
 
 CHARACTER_GEN_ROOT_ABS_PATH = dirname(__file__)
 CHARACTER_GEN_2D_DATA_ABS_PATH = os.path.join(CHARACTER_GEN_ROOT_ABS_PATH, "Stage_2D/material")
@@ -115,13 +117,13 @@ class Inference2D_API:
         else:
             pose_guider = None
 
-        unet_params = torch.load(os.path.join(ckpt_dir, "pytorch_model.bin"), map_location="cpu")
+        unet_params = comfy.utils.load_torch_file(os.path.join(ckpt_dir, "pytorch_model.bin"))
         if use_pose_guider:
-            pose_guider_params = torch.load(os.path.join(ckpt_dir, "pytorch_model_1.bin"), map_location="cpu")
-            ref_unet_params = torch.load(os.path.join(ckpt_dir, "pytorch_model_2.bin"), map_location="cpu")
+            pose_guider_params = comfy.utils.load_torch_file(os.path.join(ckpt_dir, "pytorch_model_1.bin"))
+            ref_unet_params = comfy.utils.load_torch_file(os.path.join(ckpt_dir, "pytorch_model_2.bin"))
             pose_guider.load_state_dict(pose_guider_params)
         else:
-            ref_unet_params = torch.load(os.path.join(ckpt_dir, "pytorch_model_1.bin"), map_location="cpu")
+            ref_unet_params = comfy.utils.load_torch_file(os.path.join(ckpt_dir, "pytorch_model_1.bin"))
         unet.load_state_dict(unet_params)
         ref_unet.load_state_dict(ref_unet_params)
 
@@ -188,7 +190,7 @@ class Inference2D_API:
                                     use_shifted_noise=use_shifted_noise, **self.validation).videos
         out = rearrange(out, "B C f H W -> (B f) H W C", f=self.validation.video_length)
 
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         return out
 
 class Inference3D_API:

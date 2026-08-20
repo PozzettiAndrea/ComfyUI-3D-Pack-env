@@ -7,6 +7,7 @@ import torch
 from huggingface_hub import hf_hub_download
 
 from .ldm.util import instantiate_from_config
+import comfy.utils
 
 
 PRETRAINED_MODELS = {
@@ -36,7 +37,7 @@ def build_model(model_name, config_path=None, ckpt_path=None, cache_dir=None):
     if (config_path is not None) and (ckpt_path is not None):
         config = OmegaConf.load(config_path)
         model = instantiate_from_config(config.model)
-        model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
+        model.load_state_dict(comfy.utils.load_torch_file(ckpt_path), strict=False)
         return model
         
     if not model_name in PRETRAINED_MODELS:
@@ -60,5 +61,5 @@ def build_model(model_name, config_path=None, ckpt_path=None, cache_dir=None):
             cache_dir=cache_dir,
         )
         print(f"Loading model from cache file: {ckpt_path}")
-    model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
+    model.load_state_dict(comfy.utils.load_torch_file(ckpt_path), strict=False)
     return model

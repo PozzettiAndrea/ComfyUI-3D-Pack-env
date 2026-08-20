@@ -9,6 +9,7 @@ from .base import BaseSystem
 from ..utils.ops import generate_dense_grid_points
 from ..utils.typing import *
 from ..utils.misc import get_rank
+import comfy.model_management
 
 
 @craftsman.register("shape-autoencoder-system")
@@ -128,7 +129,7 @@ class ShapeAutoEncoderSystem(BaseSystem):
         self.log("val/accuracy", accuracy)
         self.log("val/iou", iou)
 
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
 
         return {"val/loss": out["loss_logits"], "val/accuracy": accuracy, "val/iou": iou}
 

@@ -26,6 +26,7 @@ from .unet_blocks import (
 from .resnet import InflatedConv3d
 
 import comfy.ops
+import comfy.utils
 
 # Raw torch layers are not visible to ComfyUI's VRAM manager: ModelPatcher
 # only lowvram-offloads modules carrying `comfy_cast_weights`, which every
@@ -491,7 +492,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             else:
                state_dict = safetensors.torch.load_file(model_file, device="cpu") 
         else:
-            state_dict = torch.load(model_file, map_location="cpu")
+            state_dict = comfy.utils.load_torch_file(model_file)
             
         for k, v in model.state_dict().items():
             if '_temp.' in k or 'camera_embedding' in k or 'class_embedding' in k:

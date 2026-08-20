@@ -32,6 +32,7 @@ from PIL import Image, ImageSequence
 from .utils import seed_everything, timing_decorator, auto_amp_inference
 from .utils import get_parameter_number, set_parameter_grad_false
 from ..svrm.predictor import MV23DPredictor
+import comfy.model_management
 
 
 class Views2Mesh():
@@ -89,6 +90,6 @@ class Views2Mesh():
             target_face_count = target_face_count,
             do_texture_mapping = do_texture_mapping
         )
-        torch.cuda.empty_cache()
+        comfy.model_management.soft_empty_cache()
         return vtx_refine, faces_refine, vtx_colors
         
