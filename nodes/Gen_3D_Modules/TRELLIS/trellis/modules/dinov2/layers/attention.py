@@ -14,6 +14,14 @@ import warnings
 import torch
 from torch import nn, Tensor
 
+import comfy.ops
+
+# comfy.ops.disable_weight_init instead of raw torch.nn: these subclass the nn
+# layer but skip the random init (every parameter here is overwritten by the
+# checkpoint -- trellis_image_to_3d loads dinov2 with strict=True) and let
+# ComfyUI cast and offload the weights. Raw nn.Linear/nn.Conv2d bypass that.
+ops = comfy.ops.disable_weight_init
+
 
 logger = logging.getLogger("dinov2")
 
@@ -49,9 +57,9 @@ class Attention(nn.Module):
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = ops.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = attn_drop
-        self.proj = nn.Linear(dim, dim, bias=proj_bias)
+        self.proj = ops.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
     def init_weights(

@@ -12,6 +12,14 @@ from typing import Callable, Optional, Tuple, Union
 from torch import Tensor
 import torch.nn as nn
 
+import comfy.ops
+
+# comfy.ops.disable_weight_init instead of raw torch.nn: these subclass the nn
+# layer but skip the random init (every parameter here is overwritten by the
+# checkpoint -- trellis_image_to_3d loads dinov2 with strict=True) and let
+# ComfyUI cast and offload the weights. Raw nn.Linear/nn.Conv2d bypass that.
+ops = comfy.ops.disable_weight_init
+
 
 def make_2tuple(x):
     if isinstance(x, tuple):
@@ -62,7 +70,7 @@ class PatchEmbed(nn.Module):
 
         self.flatten_embedding = flatten_embedding
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_HW, stride=patch_HW)
+        self.proj = ops.Conv2d(in_chans, embed_dim, kernel_size=patch_HW, stride=patch_HW)
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x: Tensor) -> Tensor:

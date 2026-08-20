@@ -12,6 +12,14 @@ from typing import Callable, Optional
 
 from torch import Tensor, nn
 
+import comfy.ops
+
+# comfy.ops.disable_weight_init instead of raw torch.nn: these subclass the nn
+# layer but skip the random init (every parameter here is overwritten by the
+# checkpoint -- trellis_image_to_3d loads dinov2 with strict=True) and let
+# ComfyUI cast and offload the weights. Raw nn.Linear/nn.Conv2d bypass that.
+ops = comfy.ops.disable_weight_init
+
 
 class Mlp(nn.Module):
     def __init__(
@@ -26,9 +34,9 @@ class Mlp(nn.Module):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=bias)
+        self.fc1 = ops.Linear(in_features, hidden_features, bias=bias)
         self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=bias)
+        self.fc2 = ops.Linear(hidden_features, out_features, bias=bias)
         self.drop = nn.Dropout(drop)
 
     def forward(self, x: Tensor) -> Tensor:

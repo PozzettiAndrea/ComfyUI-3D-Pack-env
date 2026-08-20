@@ -10,6 +10,14 @@ import warnings
 from torch import Tensor, nn
 import torch.nn.functional as F
 
+import comfy.ops
+
+# comfy.ops.disable_weight_init instead of raw torch.nn: these subclass the nn
+# layer but skip the random init (every parameter here is overwritten by the
+# checkpoint -- trellis_image_to_3d loads dinov2 with strict=True) and let
+# ComfyUI cast and offload the weights. Raw nn.Linear/nn.Conv2d bypass that.
+ops = comfy.ops.disable_weight_init
+
 
 class SwiGLUFFN(nn.Module):
     def __init__(
@@ -24,8 +32,8 @@ class SwiGLUFFN(nn.Module):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.w12 = nn.Linear(in_features, 2 * hidden_features, bias=bias)
-        self.w3 = nn.Linear(hidden_features, out_features, bias=bias)
+        self.w12 = ops.Linear(in_features, 2 * hidden_features, bias=bias)
+        self.w3 = ops.Linear(hidden_features, out_features, bias=bias)
 
     def forward(self, x: Tensor) -> Tensor:
         x12 = self.w12(x)
@@ -89,9 +97,9 @@ class SwiGLUFFNAligned(nn.Module):
         hidden_features = hidden_features or in_features
         d = int(hidden_features * 2 / 3)
         swiglu_hidden_features = d + (-d % align_to)
-        self.w1 = nn.Linear(in_features, swiglu_hidden_features, bias=bias, device=device)
-        self.w2 = nn.Linear(in_features, swiglu_hidden_features, bias=bias, device=device)
-        self.w3 = nn.Linear(swiglu_hidden_features, out_features, bias=bias, device=device)
+        self.w1 = ops.Linear(in_features, swiglu_hidden_features, bias=bias, device=device)
+        self.w2 = ops.Linear(in_features, swiglu_hidden_features, bias=bias, device=device)
+        self.w3 = ops.Linear(swiglu_hidden_features, out_features, bias=bias, device=device)
 
     def forward(self, x: Tensor) -> Tensor:
         x1 = self.w1(x)
