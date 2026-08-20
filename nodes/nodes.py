@@ -3678,6 +3678,47 @@ class Load_Stable_Diffusion_15_Assets:
         return (ckpt, clip, upscaler)
 
 
+class Load_Stable_Zero123_Checkpoint:
+    """Fetch stable_zero123.ckpt for the native ImageOnlyCheckpointLoader.
+
+    Using_Stack_Orbit_Camera_Poses_to_conditioning_StableZero123 loads this
+    through ComfyUI's own "Load Checkpoint Image Only" node, whose widget is a
+    combo over models/checkpoints/ -- empty on a fresh install, so the graph
+    fails validation naming a file the user has to go and find.
+
+    Wiring the output orders execution as well as filling the widget, so the
+    loader cannot run before the file is there.
+
+    8.6 GB, hence its own node rather than extra outputs on something else:
+    nobody who is not running StableZero123 should pay for it.
+    """
+
+    DISPLAY_NAME = "(Down)Load Stable Zero123 Checkpoint"
+
+    CATEGORY = "Comfy3D/Import|Export"
+    # "*", ComfyUI's Any type: ImageOnlyCheckpointLoader declares ckpt_name as
+    # its OPTION LIST, which neither "COMBO" nor "STRING" will connect to.
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("ckpt_name",)
+    FUNCTION = "download"
+
+    # stabilityai/stable-zero123 is NOT gated, unlike stable-fast-3d -- it
+    # serves unauthenticated (checked: 200, 8,584,287,851 bytes) -- so this
+    # takes the publisher's own weights rather than a mirror.
+    REPO_ID = "stabilityai/stable-zero123"
+    CKPT_FILE = "stable_zero123.ckpt"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    def download(self):
+        name = _ensure_comfy_model("checkpoints", self.CKPT_FILE,
+                                   repo_id=self.REPO_ID, repo_file=self.CKPT_FILE)
+        cstr(f"[{self.__class__.__name__}] ready: {name}").msg.print()
+        return (name, )
+
+
 class Load_RealESRGAN_x4plus:
     """Fetch RealESRGAN_x4plus.pth and hand its name to UpscaleModelLoader.
 
